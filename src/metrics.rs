@@ -1,0 +1,13 @@
+pub const ENCODE_ERROR: &str = "encode_error";
+pub const SERVER_ERROR: &str = "server_error";
+pub const GRPC_SUBSCRIBE_ERROR: &str = "grpc_subscribe_error";
+pub const WSS_SUBSCRIBE_ACCEPT_ERROR: &str = "wss_subscribe_accept_error";
+pub const GRPC_CLOSE_ERROR: &str = "grpc_close_error";
+pub const WSS_SEND_ERROR: &str = "wss_send_error";
+pub const ACTIVE_CONNECTIONS: &str = "active_connections";
+pub const TRANSACTION_NOTIFICATION: &str = "transaction_notification";
+pub const ACCOUNT_NOTIFICATION: &str = "account_notification";
+pub const UNKNOWN_NOTIFICATION: &str = "unknown_notification";
+pub const PING: &str = "ping";
+pub const TRANSACTION_SUBSCRIBE_CLOSED: &str = "transaction_subscribe_closed";
+pub const ACCOUNT_SUBSCRIBE_CLOSED: &str = "account_subscribe_closed";
