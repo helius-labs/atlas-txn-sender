@@ -35,6 +35,7 @@ struct AtlasTxnSenderEnv {
     grpc_url: Option<String>,
     rpc_url: Option<String>,
     port: Option<u16>,
+    tpu_connection_pool_size: Option<usize>,
 }
 
 // Defualt on RPC is 4
@@ -72,9 +73,12 @@ async fn main() -> anyhow::Result<()> {
     } else {
         identity_keypair = Keypair::new();
     }
+    let tpu_connection_pool_size = env
+        .tpu_connection_pool_size
+        .unwrap_or(DEFAULT_TPU_CONNECTION_POOL_SIZE);
     let connection_cache = Arc::new(ConnectionCache::new_with_client_options(
         "atlas-txn-sender",
-        DEFAULT_TPU_CONNECTION_POOL_SIZE,
+        tpu_connection_pool_size,
         None, // created if none specified
         Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
         None, // not used as far as I can tell
@@ -86,7 +90,11 @@ async fn main() -> anyhow::Result<()> {
     let transaction_store = Arc::new(TransactionStoreImpl::new());
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(client, transaction_store.clone()));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
-    let leader_tracker = Arc::new(LeaderTrackerImpl::new(rpc_client, solana_rpc.clone()));
+    let leader_tracker = Arc::new(LeaderTrackerImpl::new(
+        rpc_client,
+        solana_rpc.clone(),
+        tpu_connection_pool_size,
+    ));
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker.clone(),
         transaction_store,

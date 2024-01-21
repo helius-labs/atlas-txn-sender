@@ -29,15 +29,21 @@ pub struct LeaderTrackerImpl {
     solana_rpc: Arc<dyn SolanaRpc>,
     cur_slot: Arc<AtomicU64>,
     cur_leaders: Arc<DashMap<Slot, RpcContactInfo>>,
+    tpu_connection_pool_size: usize,
 }
 
 impl LeaderTrackerImpl {
-    pub fn new(rpc_client: Arc<RpcClient>, solana_rpc: Arc<dyn SolanaRpc>) -> Self {
+    pub fn new(
+        rpc_client: Arc<RpcClient>,
+        solana_rpc: Arc<dyn SolanaRpc>,
+        tpu_connection_pool_size: usize,
+    ) -> Self {
         let leader_tracker = Self {
             rpc_client,
             solana_rpc,
             cur_slot: Arc::new(AtomicU64::new(0)),
             cur_leaders: Arc::new(DashMap::new()),
+            tpu_connection_pool_size,
         };
         leader_tracker.poll_slot();
         leader_tracker.poll_slot_leaders();
@@ -118,7 +124,7 @@ impl LeaderTracker for LeaderTrackerImpl {
     fn get_leaders(&self) -> Vec<RpcContactInfo> {
         let mut leaders = vec![];
         let cur_slot = self.cur_slot.load(Ordering::Relaxed);
-        for slot in cur_slot..cur_slot + DEFAULT_TPU_CONNECTION_POOL_SIZE as u64 {
+        for slot in cur_slot..cur_slot + self.tpu_connection_pool_size as u64 {
             let leader = self.cur_leaders.get(&slot);
             if let Some(leader) = leader {
                 leaders.push(leader.value().clone());
