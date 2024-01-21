@@ -38,7 +38,7 @@ struct AtlasTxnSenderEnv {
 }
 
 // Defualt on RPC is 4
-pub const DEFAULT_TPU_CONNECTION_POOL_SIZE: usize = 7;
+pub const DEFAULT_TPU_CONNECTION_POOL_SIZE: usize = 4;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
