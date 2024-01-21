@@ -84,7 +84,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             sent_at: Instant::now(),
         };
         self.txn_sender
-            .send_transaction(self.leader_tracker.get_leaders(), transaction)
+            .send_transaction(transaction)
             .await;
         statsd_time!("send_transaction_time", start.elapsed());
         Ok(signature)

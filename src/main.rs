@@ -88,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
     let leader_tracker = Arc::new(LeaderTrackerImpl::new(rpc_client, solana_rpc.clone()));
     let txn_sender = Arc::new(TxnSenderImpl::new(
+        leader_tracker.clone(),
         transaction_store,
         connection_cache.clone(),
     ));

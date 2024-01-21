@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cadence_macros::{statsd_gauge, statsd_time};
+use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use dashmap::DashMap;
 use solana_sdk::transaction::{self, VersionedTransaction};
 use tokio::time::sleep;
@@ -20,6 +20,7 @@ pub trait TransactionStore: Send + Sync {
     fn add_transaction(&self, transaction: TransactionData);
     fn get_signatures(&self) -> Vec<String>;
     fn remove_transaction(&self, signature: String);
+    fn get_wire_transactions(&self) -> Vec<Vec<u8>>;
 }
 
 pub struct TransactionStoreImpl {
@@ -44,9 +45,11 @@ impl TransactionStoreImpl {
                         signatures_to_remove.push(get_signature(&transaction).unwrap());
                     }
                 }
+                let transactions_not_landed = signatures_to_remove.len();
                 for signature in signatures_to_remove {
                     transactions.remove(&signature.to_string());
                 }
+                statsd_count!("transactions_not_landed", transactions_not_landed as i64);
                 statsd_gauge!("transaction_store_size", transactions.len() as u64);
                 sleep(Duration::from_secs(60)).await;
             }
@@ -76,8 +79,22 @@ impl TransactionStore for TransactionStoreImpl {
     }
     fn remove_transaction(&self, signature: String) {
         let start = Instant::now();
-        self.transactions.remove(&signature);
+        let removed_txn = self.transactions.remove(&signature);
         statsd_time!("remove_signature_time", start.elapsed());
+        if let Some((_, transaction_data)) = removed_txn {
+            statsd_count!("transactions_landed", 1);
+            statsd_time!("transaction_land_time", transaction_data.sent_at.elapsed());
+        }
+    }
+    fn get_wire_transactions(&self) -> Vec<Vec<u8>> {
+        let start = Instant::now();
+        let wire_transactions = self
+            .transactions
+            .iter()
+            .map(|t| t.value().wire_transaction.clone())
+            .collect();
+        statsd_time!("get_wire_transactions_time", start.elapsed());
+        wire_transactions
     }
 }
 
