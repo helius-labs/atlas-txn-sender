@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap();
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
-        .pretty()
+        .json()
         .init();
     new_metrics_client();
 
