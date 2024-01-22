@@ -84,9 +84,7 @@ impl TxnSenderImpl {
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         tokio::spawn(async move {
-            info!("waiting for transaction to land: {}", signature);
             let confirmed = solana_rpc.confirm_transaction(signature.clone()).await;
-            info!("transaction landed: {}", confirmed);
             transaction_store.remove_transaction(signature);
             if confirmed {
                 statsd_count!("transactions_landed", 1);
