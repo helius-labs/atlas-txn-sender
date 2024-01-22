@@ -116,9 +116,9 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
         }
 
         loop {
-            info!("waiting for signature to land");
             let timeout = sleep(Duration::from_secs(90));
-            match future::select(Box::pin(timeout), grpc_rx.next()).await {
+            futures::pin_mut!(timeout);
+            match future::select(timeout, grpc_rx.next()).await {
                 future::Either::Left(_) => {
                     error!("Timeout waiting for signature to land");
                     return false;
@@ -134,9 +134,7 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
                             Some(UpdateOneof::Transaction(_)) => {
                                 return true;
                             }
-                            _ => {
-                                info!("ignoring message: {:?}", message);
-                            }
+                            _ => {}
                         },
                         Err(error) => {
                             error!("error in txn subscribe: {error:?}");
