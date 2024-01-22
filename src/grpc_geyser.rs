@@ -56,8 +56,8 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         continue;
                     }
                     (grpc_tx, grpc_rx) = subscription.unwrap();
-                    grpc_tx.send(get_slot_subscribe_request()).await.unwrap();
                 }
+                grpc_tx.send(get_slot_subscribe_request()).await.unwrap();
                 while let Some(message) = grpc_rx.next().await {
                     match message {
                         Ok(msg) => {
@@ -103,7 +103,6 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
         let mut grpc_rx;
         {
-            // let grpc_tx_write = grpc_tx.write().await;
             let mut grpc_client = self.grpc_client.write().await;
             let subscription = grpc_client
                 .subscribe_with_request(Some(get_signature_subscribe_request(signature)))
