@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
         transaction_store,
         connection_cache.clone(),
     ));
-    let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender, leader_tracker);
+    let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
     let handle = server.start(atlas_txn_sender.into_rpc());
     handle.stopped().await;
     Ok(())

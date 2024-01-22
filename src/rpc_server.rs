@@ -37,15 +37,11 @@ pub trait AtlasTxnSender {
 
 pub struct AtlasTxnSenderImpl {
     txn_sender: Arc<dyn TxnSender>,
-    leader_tracker: Arc<dyn LeaderTracker>,
 }
 
 impl AtlasTxnSenderImpl {
-    pub fn new(txn_sender: Arc<dyn TxnSender>, leader_tracker: Arc<dyn LeaderTracker>) -> Self {
-        Self {
-            txn_sender,
-            leader_tracker,
-        }
+    pub fn new(txn_sender: Arc<dyn TxnSender>) -> Self {
+        Self { txn_sender }
     }
 }
 
@@ -83,9 +79,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             versioned_transaction,
             sent_at: Instant::now(),
         };
-        self.txn_sender
-            .send_transaction(transaction)
-            .await;
+        self.txn_sender.send_transaction(transaction).await;
         statsd_time!("send_transaction_time", start.elapsed());
         Ok(signature)
     }

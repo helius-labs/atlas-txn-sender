@@ -1,18 +1,13 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use cadence_macros::{statsd_count, statsd_gauge};
+use cadence_macros::statsd_count;
 use crossbeam::channel::{Receiver, Sender};
-use dashmap::DashMap;
-use futures::sink::SinkExt;
+use futures::future::Either;
 use futures::StreamExt;
-use jsonrpsee::core::error;
-use solana_sdk::{signature::Signature, slot_history::Slot};
+use futures::{future, sink::SinkExt};
+use solana_sdk::slot_history::Slot;
 use tokio::{sync::RwLock, time::sleep};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use yellowstone_grpc_client::GeyserGrpcClient;
 use yellowstone_grpc_proto::{
     geyser::{
@@ -29,11 +24,6 @@ pub struct GrpcGeyserImpl<T> {
     transaction_store: Arc<dyn TransactionStore>,
     outbound_slot_rx: Receiver<Slot>,
     outbound_slot_tx: Sender<Slot>,
-    // inbound_signature_rx: Receiver<String>,
-    // inbound_signature_tx: Sender<String>,
-    // outbound_signature_rx: Receiver<String>,
-    // outbound_signature_tx: Sender<String>,
-    current_signatures: Arc<DashMap<String, Instant>>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
@@ -42,18 +32,11 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         transaction_store: Arc<dyn TransactionStore>,
     ) -> Self {
         let (outbound_slot_tx, outbound_slot_rx) = crossbeam::channel::unbounded();
-        // let (inbound_signature_tx, inbound_signature_rx) = crossbeam::channel::unbounded();
-        // let (outbound_signature_tx, outbound_signature_rx) = crossbeam::channel::unbounded();
         let grpc_geyser = Self {
             grpc_client,
             transaction_store,
             outbound_slot_rx,
             outbound_slot_tx,
-            // inbound_signature_rx,
-            // inbound_signature_tx,
-            // outbound_signature_rx,
-            // outbound_signature_tx,
-            current_signatures: Arc::new(DashMap::new()),
         };
         grpc_geyser.poll_subscription();
         grpc_geyser
@@ -63,11 +46,13 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         let grpc_client = self.grpc_client.clone();
         let transaction_store = self.transaction_store.clone();
         let outbound_slot_tx = self.outbound_slot_tx.clone();
+        // let grpc_tx = self.grpc_tx.clone();
         tokio::spawn(async move {
             loop {
-                let mut grpc_tx;
-                let mut grpc_rx;
+                let mut cur_grpc_tx;
+                let mut cur_grpc_rx;
                 {
+                    // let grpc_tx_write = grpc_tx.write().await;
                     let mut grpc_client = grpc_client.write().await;
                     let subscription = grpc_client.subscribe().await;
                     if let Err(e) = subscription {
@@ -76,63 +61,76 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         sleep(Duration::from_secs(1)).await;
                         continue;
                     }
-                    (grpc_tx, grpc_rx) = subscription.unwrap();
-                    grpc_tx
+                    (cur_grpc_tx, cur_grpc_rx) = subscription.unwrap();
+                    cur_grpc_tx
                         .send(get_subscribe_request(transaction_store.get_signatures()))
                         .await
                         .unwrap();
                 }
-                while let Some(message) = grpc_rx.next().await {
-                    match message {
-                        Ok(msg) => {
-                            match msg.update_oneof {
-                                Some(UpdateOneof::Slot(slot)) => {
-                                    if let Err(e) = outbound_slot_tx.send(slot.slot) {
-                                        error!("Error sending slot: {}", e);
-                                        statsd_count!("outbound_slot_tx_error", 1);
+                loop {
+                    match future::select(
+                        Box::pin(sleep(Duration::from_millis(10))),
+                        cur_grpc_rx.next(),
+                    )
+                    .await
+                    {
+                        Either::Left(_) => {
+                            // Update subscription
+                            if let Err(e) = cur_grpc_tx
+                                .send(get_subscribe_request(transaction_store.get_signatures()))
+                                .await
+                            {
+                                error!("Error sending subscription request, reconnecting in one second: {}", e);
+                                sleep(Duration::from_secs(1)).await;
+                                break;
+                            }
+                        }
+                        Either::Right((message, _)) => {
+                            // process message
+                            if message.is_none() {
+                                info!("gRPC stream disconnected, reconnecting in one second");
+                                sleep(Duration::from_secs(1)).await;
+                                break;
+                            }
+                            let message = message.unwrap();
+                            match message {
+                                Ok(msg) => match msg.update_oneof {
+                                    Some(UpdateOneof::Slot(slot)) => {
+                                        if let Err(e) = outbound_slot_tx.send(slot.slot) {
+                                            error!("Error sending slot: {}", e);
+                                            statsd_count!("outbound_slot_tx_error", 1);
+                                            continue;
+                                        }
+                                    }
+                                    Some(UpdateOneof::Transaction(tx)) => {
+                                        if let Some(transaction) = tx.transaction {
+                                            match String::from_utf8(transaction.signature) {
+                                                Ok(signature) => {
+                                                    transaction_store.remove_transaction(signature)
+                                                }
+                                                Err(e) => {
+                                                    error!("Error decoding signature: {}", e);
+                                                    statsd_count!("signature_decode_error", 1);
+                                                }
+                                            }
+                                        } else {
+                                            error!("Transaction update without transaction");
+                                        }
                                         continue;
                                     }
-                                }
-                                Some(UpdateOneof::Transaction(tx)) => {
-                                    if let Some(transaction) = tx.transaction {
-                                        match String::from_utf8(transaction.signature) {
-                                            Ok(signature) => {
-                                                transaction_store.remove_transaction(signature)
-                                            }
-                                            Err(e) => {
-                                                error!("Error decoding signature: {}", e);
-                                                statsd_count!("signature_decode_error", 1);
-                                            }
-                                        }
-                                    } else {
-                                        error!("Transaction update without transaction");
+                                    Some(UpdateOneof::Pong(_)) | Some(UpdateOneof::Ping(_)) => {}
+                                    _ => {
+                                        error!("Unknown message: {:?}", msg);
                                     }
-                                    continue;
-                                }
-                                Some(UpdateOneof::Ping(_)) => {
-                                    // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
-                                    // require periodic client pings then this is unnecessary
-                                    let ping = grpc_tx.send(ping()).await;
-                                    if let Err(e) = ping {
-                                        error!("Error sending ping: {}", e);
-                                        statsd_count!("grpc_ping_error", 1);
-                                        break;
-                                    }
-                                }
-                                Some(UpdateOneof::Pong(_)) => {}
-                                _ => {
-                                    error!("Unknown message: {:?}", msg);
+                                },
+                                Err(error) => {
+                                    error!("error: {error:?}");
+                                    break;
                                 }
                             }
                         }
-                        Err(error) => {
-                            error!("error: {error:?}");
-                            break;
-                        }
                     }
                 }
-                info!("gRPC stream disconnected, reconnecting in one second");
-                sleep(Duration::from_secs(1)).await;
             }
         });
     }
