@@ -55,8 +55,6 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         txn: String,
         params: RpcSendTransactionConfig,
     ) -> RpcResult<String> {
-        // TODO: Add validation to fail is preflight is true
-        // TODO: Add landing time metric
         let start = Instant::now();
         let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
         let binary_encoding = encoding.into_binary_encoding().ok_or_else(|| {

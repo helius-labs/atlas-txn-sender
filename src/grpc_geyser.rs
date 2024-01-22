@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
 use crossbeam::channel::{Receiver, Sender};
-use futures::future::Either;
 use futures::StreamExt;
 use futures::{future, sink::SinkExt};
 use solana_sdk::slot_history::Slot;
 use tokio::{sync::RwLock, time::sleep};
+use tonic::async_trait;
 use tracing::{error, info};
 use yellowstone_grpc_client::GeyserGrpcClient;
 use yellowstone_grpc_proto::{
@@ -17,40 +17,34 @@ use yellowstone_grpc_proto::{
     tonic::service::Interceptor,
 };
 
-use crate::{solana_rpc::SolanaRpc, transaction_store::TransactionStore};
+use crate::solana_rpc::SolanaRpc;
 
 pub struct GrpcGeyserImpl<T> {
     grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
-    transaction_store: Arc<dyn TransactionStore>,
     outbound_slot_rx: Receiver<Slot>,
     outbound_slot_tx: Sender<Slot>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
-    pub fn new(
-        grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
-        transaction_store: Arc<dyn TransactionStore>,
-    ) -> Self {
+    pub fn new(grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>) -> Self {
         let (outbound_slot_tx, outbound_slot_rx) = crossbeam::channel::unbounded();
         let grpc_geyser = Self {
             grpc_client,
-            transaction_store,
             outbound_slot_rx,
             outbound_slot_tx,
         };
-        grpc_geyser.poll_subscription();
+        grpc_geyser.poll_slots();
         grpc_geyser
     }
 
-    fn poll_subscription(&self) {
+    fn poll_slots(&self) {
         let grpc_client = self.grpc_client.clone();
-        let transaction_store = self.transaction_store.clone();
         let outbound_slot_tx = self.outbound_slot_tx.clone();
         // let grpc_tx = self.grpc_tx.clone();
         tokio::spawn(async move {
             loop {
-                let mut cur_grpc_tx;
-                let mut cur_grpc_rx;
+                let mut grpc_tx;
+                let mut grpc_rx;
                 {
                     // let grpc_tx_write = grpc_tx.write().await;
                     let mut grpc_client = grpc_client.write().await;
@@ -61,82 +55,95 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         sleep(Duration::from_secs(1)).await;
                         continue;
                     }
-                    (cur_grpc_tx, cur_grpc_rx) = subscription.unwrap();
-                    cur_grpc_tx
-                        .send(get_subscribe_request(transaction_store.get_signatures()))
-                        .await
-                        .unwrap();
+                    (grpc_tx, grpc_rx) = subscription.unwrap();
+                    grpc_tx.send(get_slot_subscribe_request()).await.unwrap();
                 }
-                loop {
-                    match future::select(
-                        Box::pin(sleep(Duration::from_millis(10))),
-                        cur_grpc_rx.next(),
-                    )
-                    .await
-                    {
-                        Either::Left(_) => {
-                            // Update subscription
-                            if let Err(e) = cur_grpc_tx
-                                .send(get_subscribe_request(transaction_store.get_signatures()))
-                                .await
-                            {
-                                error!("Error sending subscription request, reconnecting in one second: {}", e);
-                                sleep(Duration::from_secs(1)).await;
-                                break;
-                            }
-                        }
-                        Either::Right((message, _)) => {
-                            // process message
-                            if message.is_none() {
-                                info!("gRPC stream disconnected, reconnecting in one second");
-                                sleep(Duration::from_secs(1)).await;
-                                break;
-                            }
-                            let message = message.unwrap();
-                            match message {
-                                Ok(msg) => match msg.update_oneof {
-                                    Some(UpdateOneof::Slot(slot)) => {
-                                        if let Err(e) = outbound_slot_tx.send(slot.slot) {
-                                            error!("Error sending slot: {}", e);
-                                            statsd_count!("outbound_slot_tx_error", 1);
-                                            continue;
-                                        }
-                                    }
-                                    Some(UpdateOneof::Transaction(tx)) => {
-                                        if let Some(transaction) = tx.transaction {
-                                            match String::from_utf8(transaction.signature) {
-                                                Ok(signature) => {
-                                                    transaction_store.remove_transaction(signature)
-                                                }
-                                                Err(e) => {
-                                                    error!("Error decoding signature: {}", e);
-                                                    statsd_count!("signature_decode_error", 1);
-                                                }
-                                            }
-                                        } else {
-                                            error!("Transaction update without transaction");
-                                        }
+                while let Some(message) = grpc_rx.next().await {
+                    match message {
+                        Ok(msg) => {
+                            match msg.update_oneof {
+                                Some(UpdateOneof::Slot(slot)) => {
+                                    if let Err(e) = outbound_slot_tx.send(slot.slot) {
+                                        error!("Error sending slot: {}", e);
+                                        statsd_count!("outbound_slot_tx_error", 1);
                                         continue;
                                     }
-                                    Some(UpdateOneof::Pong(_)) | Some(UpdateOneof::Ping(_)) => {}
-                                    _ => {
-                                        error!("Unknown message: {:?}", msg);
+                                }
+                                Some(UpdateOneof::Ping(_)) => {
+                                    // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
+                                    // require periodic client pings then this is unnecessary
+                                    let ping = grpc_tx.send(ping()).await;
+                                    if let Err(e) = ping {
+                                        error!("Error sending ping: {}", e);
+                                        statsd_count!("grpc_ping_error", 1);
+                                        break;
                                     }
-                                },
-                                Err(error) => {
-                                    error!("error: {error:?}");
-                                    break;
+                                }
+                                Some(UpdateOneof::Pong(_)) => {}
+                                _ => {
+                                    error!("Unknown message: {:?}", msg);
                                 }
                             }
                         }
+                        Err(error) => {
+                            error!("error: {error:?}");
+                            break;
+                        }
                     }
                 }
+                info!("gRPC stream disconnected, reconnecting in one second");
+                sleep(Duration::from_secs(1)).await;
             }
         });
     }
 }
 
-impl<T: Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
+#[async_trait]
+impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
+    async fn confirm_transaction(&self, signature: String) -> bool {
+        let mut grpc_rx;
+        {
+            // let grpc_tx_write = grpc_tx.write().await;
+            let mut grpc_client = self.grpc_client.write().await;
+            let subscription = grpc_client
+                .subscribe_with_request(Some(get_signature_subscribe_request(signature)))
+                .await;
+            if let Err(e) = subscription {
+                error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
+                statsd_count!("grpc_subscribe_error", 1);
+                return false;
+            }
+            (_, grpc_rx) = subscription.unwrap();
+        }
+
+        loop {
+            match future::select(Box::pin(sleep(Duration::from_secs(90))), grpc_rx.next()).await {
+                future::Either::Left(_) => {
+                    error!("Timeout waiting for signature to land");
+                    return false;
+                }
+                future::Either::Right((message, _)) => {
+                    if message.is_none() {
+                        error!("gRPC stream disconnected in txn subscribe");
+                        return false;
+                    }
+                    let message = message.unwrap();
+                    match message {
+                        Ok(message) => match message.update_oneof {
+                            Some(UpdateOneof::Transaction(_)) => {
+                                return true;
+                            }
+                            _ => {}
+                        },
+                        Err(error) => {
+                            error!("error in txn subscribe: {error:?}");
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
     fn get_next_slot(&self) -> Option<u64> {
         match self.outbound_slot_rx.try_recv() {
             Ok(slot) => Some(slot),
@@ -152,23 +159,24 @@ impl<T: Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     }
 }
 
-fn get_subscribe_request(signatures: Vec<String>) -> SubscribeRequest {
-    let transaction_subscriptions: Vec<(String, SubscribeRequestFilterTransactions)> = signatures
-        .into_iter()
-        .map(|signature| {
-            (
-                "txn_sub".to_string(),
-                SubscribeRequestFilterTransactions {
-                    vote: Some(false),
-                    failed: Some(true),
-                    signature: Some(signature),
-                    account_include: vec![],
-                    account_exclude: vec![],
-                    account_required: vec![],
-                },
-            )
-        })
-        .collect();
+fn get_signature_subscribe_request(signature: String) -> SubscribeRequest {
+    SubscribeRequest {
+        transactions: HashMap::from_iter(vec![(
+            "txn_sub".to_string(),
+            SubscribeRequestFilterTransactions {
+                vote: Some(false),
+                failed: Some(true),
+                signature: Some(signature),
+                account_include: vec![],
+                account_exclude: vec![],
+                account_required: vec![],
+            },
+        )]),
+        ..Default::default()
+    }
+}
+
+fn get_slot_subscribe_request() -> SubscribeRequest {
     SubscribeRequest {
         slots: HashMap::from_iter(vec![(
             "slot_sub".to_string(),
@@ -176,7 +184,6 @@ fn get_subscribe_request(signatures: Vec<String>) -> SubscribeRequest {
                 filter_by_commitment: Some(true),
             },
         )]),
-        transactions: HashMap::from_iter(transaction_subscriptions),
         ..Default::default()
     }
 }

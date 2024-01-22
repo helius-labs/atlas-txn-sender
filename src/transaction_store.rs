@@ -1,14 +1,11 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
-use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
+use cadence_macros::statsd_time;
 use dashmap::DashMap;
 use solana_sdk::transaction::VersionedTransaction;
-use tokio::time::sleep;
 use tracing::error;
 
+#[derive(Clone, Debug)]
 pub struct TransactionData {
     pub wire_transaction: Vec<u8>,
     pub versioned_transaction: VersionedTransaction,
@@ -31,28 +28,7 @@ impl TransactionStoreImpl {
         let transaction_store = Self {
             transactions: Arc::new(DashMap::new()),
         };
-        transaction_store.clean_signatures();
         transaction_store
-    }
-    fn clean_signatures(&self) {
-        let transactions = self.transactions.clone();
-        tokio::spawn(async move {
-            loop {
-                let mut signatures_to_remove = vec![];
-                for transaction in transactions.iter() {
-                    if transaction.sent_at.elapsed().as_secs() > 90 {
-                        signatures_to_remove.push(get_signature(&transaction).unwrap());
-                    }
-                }
-                let transactions_not_landed = signatures_to_remove.len();
-                for signature in signatures_to_remove {
-                    transactions.remove(&signature.to_string());
-                }
-                statsd_count!("transactions_not_landed", transactions_not_landed as i64);
-                statsd_gauge!("transaction_store_size", transactions.len() as u64);
-                sleep(Duration::from_secs(60)).await;
-            }
-        });
     }
 }
 
@@ -78,12 +54,8 @@ impl TransactionStore for TransactionStoreImpl {
     }
     fn remove_transaction(&self, signature: String) {
         let start = Instant::now();
-        let removed_txn = self.transactions.remove(&signature);
+        let _ = self.transactions.remove(&signature);
         statsd_time!("remove_signature_time", start.elapsed());
-        if let Some((_, transaction_data)) = removed_txn {
-            statsd_count!("transactions_landed", 1);
-            statsd_time!("transaction_land_time", transaction_data.sent_at.elapsed());
-        }
     }
     fn get_wire_transactions(&self) -> Vec<Vec<u8>> {
         let start = Instant::now();
@@ -97,7 +69,7 @@ impl TransactionStore for TransactionStoreImpl {
     }
 }
 
-fn get_signature(transaction: &TransactionData) -> Option<String> {
+pub fn get_signature(transaction: &TransactionData) -> Option<String> {
     transaction
         .versioned_transaction
         .signatures

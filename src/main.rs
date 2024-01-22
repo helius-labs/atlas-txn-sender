@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
         GeyserGrpcClient::connect::<String, String>(env.grpc_url.unwrap(), None, None).unwrap(),
     ));
     let transaction_store = Arc::new(TransactionStoreImpl::new());
-    let solana_rpc = Arc::new(GrpcGeyserImpl::new(client, transaction_store.clone()));
+    let solana_rpc = Arc::new(GrpcGeyserImpl::new(client));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
     let leader_tracker = Arc::new(LeaderTrackerImpl::new(
         rpc_client,
@@ -99,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         leader_tracker.clone(),
         transaction_store,
         connection_cache.clone(),
+        solana_rpc,
     ));
     let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
     let handle = server.start(atlas_txn_sender.into_rpc());

@@ -1,23 +1,17 @@
-use std::{
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use cadence_macros::statsd_count;
-use futures::future::join_all;
+use cadence_macros::{statsd_count, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
-use solana_rpc_client_api::response::RpcContactInfo;
 use tokio::time::sleep;
 use tonic::async_trait;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
-    leader_tracker::{self, LeaderTracker},
-    transaction_store::{TransactionData, TransactionStore},
+    leader_tracker::LeaderTracker,
+    solana_rpc::SolanaRpc,
+    transaction_store::{get_signature, TransactionData, TransactionStore},
 };
 
 #[async_trait]
@@ -29,6 +23,7 @@ pub struct TxnSenderImpl {
     leader_tracker: Arc<dyn LeaderTracker>,
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
+    solana_rpc: Arc<dyn SolanaRpc>,
 }
 
 impl TxnSenderImpl {
@@ -36,11 +31,13 @@ impl TxnSenderImpl {
         leader_tracker: Arc<dyn LeaderTracker>,
         transaction_store: Arc<dyn TransactionStore>,
         connection_cache: Arc<ConnectionCache>,
+        solana_rpc: Arc<dyn SolanaRpc>,
     ) -> Self {
         let txn_sender = Self {
             leader_tracker,
             transaction_store,
             connection_cache,
+            solana_rpc,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -75,18 +72,41 @@ impl TxnSenderImpl {
             }
         });
     }
+    fn track_transaction(&self, transaction_data: &TransactionData) {
+        let sent_at = transaction_data.sent_at.clone();
+        let signature = get_signature(transaction_data);
+        if signature.is_none() {
+            return;
+        }
+        let signature = signature.unwrap();
+        self.transaction_store
+            .add_transaction(transaction_data.clone());
+        let solana_rpc = self.solana_rpc.clone();
+        let transaction_store = self.transaction_store.clone();
+        tokio::spawn(async move {
+            let confirmed = solana_rpc.confirm_transaction(signature.clone()).await;
+            transaction_store.remove_transaction(signature);
+            if confirmed {
+                statsd_count!("transactions_landed", 1);
+                statsd_time!("transaction_land_time", sent_at.elapsed());
+            } else {
+                statsd_count!("transactions_not_landed", 1);
+            }
+        });
+    }
 }
 
 #[async_trait]
 impl TxnSender for TxnSenderImpl {
-    async fn send_transaction(&self, transaction: TransactionData) {
+    async fn send_transaction(&self, transaction_data: TransactionData) {
+        self.track_transaction(&transaction_data);
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
                 continue;
             }
             let connection_cache = self.connection_cache.clone();
-            let wire_transaction = transaction.wire_transaction.clone();
+            let wire_transaction = transaction_data.wire_transaction.clone();
             tokio::spawn(async move {
                 let conn = connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                 if let Err(e) = conn.send_data(&wire_transaction).await {
@@ -95,6 +115,5 @@ impl TxnSender for TxnSenderImpl {
                 }
             });
         }
-        self.transaction_store.add_transaction(transaction);
     }
 }
