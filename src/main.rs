@@ -122,7 +122,7 @@ fn new_metrics_client() {
     let host = (uri, port);
     let udp_sink = BufferedUdpMetricSink::from(host, socket).unwrap();
     let queuing_sink = QueuingMetricSink::from(udp_sink);
-    let builder = StatsdClient::builder("atlas", queuing_sink);
+    let builder = StatsdClient::builder("atlas_txn_sender", queuing_sink);
     let client = builder
         .with_error_handler(|e| error!("statsd metrics error: {}", e))
         .build();
