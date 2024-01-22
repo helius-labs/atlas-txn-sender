@@ -45,18 +45,17 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
             loop {
                 let mut grpc_tx;
                 let mut grpc_rx;
-                {
-                    // let grpc_tx_write = grpc_tx.write().await;
-                    let mut grpc_client = grpc_client.write().await;
-                    let subscription = grpc_client.subscribe().await;
-                    if let Err(e) = subscription {
-                        error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
-                        statsd_count!("grpc_subscribe_error", 1);
-                        sleep(Duration::from_secs(1)).await;
-                        continue;
-                    }
-                    (grpc_tx, grpc_rx) = subscription.unwrap();
+                // let grpc_tx_write = grpc_tx.write().await;
+                let mut grpc_client = grpc_client.write().await;
+                let subscription = grpc_client.subscribe().await;
+                drop(grpc_client);
+                if let Err(e) = subscription {
+                    error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
+                    statsd_count!("grpc_subscribe_error", 1);
+                    sleep(Duration::from_secs(1)).await;
+                    continue;
                 }
+                (grpc_tx, grpc_rx) = subscription.unwrap();
                 grpc_tx.send(get_slot_subscribe_request()).await.unwrap();
                 while let Some(message) = grpc_rx.next().await {
                     match message {
@@ -104,9 +103,11 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
         let mut grpc_rx;
         {
             let mut grpc_client = self.grpc_client.write().await;
+            info!("got write lock on grpc_client");
             let subscription = grpc_client
                 .subscribe_with_request(Some(get_signature_subscribe_request(signature)))
                 .await;
+            drop(grpc_client);
             if let Err(e) = subscription {
                 error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
                 statsd_count!("grpc_subscribe_error", 1);
