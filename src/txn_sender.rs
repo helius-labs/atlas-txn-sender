@@ -79,6 +79,7 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
+        info!("tracking transaction {}", signature);
         self.transaction_store
             .add_transaction(transaction_data.clone());
         let solana_rpc = self.solana_rpc.clone();

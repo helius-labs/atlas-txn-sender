@@ -94,12 +94,12 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                             Some(UpdateOneof::Ping(_)) => {
                                 // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
                                 // require periodic client pings then this is unnecessary
-                                // let ping = grpc_tx.send(ping()).await;
-                                // if let Err(e) = ping {
-                                //     error!("Error sending ping: {}", e);
-                                //     statsd_count!("grpc_ping_error", 1);
-                                //     break;
-                                // }
+                                let ping = grpc_tx.send(ping()).await;
+                                if let Err(e) = ping {
+                                    error!("Error sending ping: {}", e);
+                                    statsd_count!("grpc_ping_error", 1);
+                                    break;
+                                }
                             }
                             Some(UpdateOneof::Pong(_)) => {}
                             _ => {
