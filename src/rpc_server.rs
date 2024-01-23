@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use cadence_macros::statsd_time;
+use cadence_macros::{statsd_count, statsd_time};
 use jsonrpsee::{
     core::{async_trait, RpcResult},
     proc_macros::rpc,
@@ -79,6 +79,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         };
         self.txn_sender.send_transaction(transaction).await;
         statsd_time!("send_transaction_time", start.elapsed());
+        statsd_count!("send_transaction", 1);
         Ok(signature)
     }
 }
