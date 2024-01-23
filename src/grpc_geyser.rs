@@ -86,7 +86,6 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                                 } else {
                                     error!("Transaction update missing transaction");
                                 }
-                                info!("Transaction update");
                             }
                             Some(UpdateOneof::Ping(_)) => {
                                 // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
