@@ -3,8 +3,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
 use crossbeam::channel::{Receiver, Sender};
+use dashmap::{DashMap, DashSet};
 use futures::sink::SinkExt;
 use futures::StreamExt;
+use solana_sdk::signature::Signature;
 use solana_sdk::slot_history::Slot;
 use tokio::{sync::RwLock, time::sleep};
 use tonic::async_trait;
@@ -24,6 +26,7 @@ pub struct GrpcGeyserImpl<T> {
     grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
     outbound_slot_rx: Receiver<Slot>,
     outbound_slot_tx: Sender<Slot>,
+    signature_cache: DashMap<String, Instant>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
@@ -33,9 +36,81 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
             grpc_client,
             outbound_slot_rx,
             outbound_slot_tx,
+            signature_cache: DashMap::new(),
         };
         grpc_geyser.poll_slots();
+        grpc_geyser.poll_transactions();
+        grpc_geyser.clean_signature_cache();
         grpc_geyser
+    }
+
+    fn clean_signature_cache(&self) {
+        let signature_cache = self.signature_cache.clone();
+        tokio::spawn(async move {
+            loop {
+                let signature_cache = signature_cache.clone();
+                signature_cache.retain(|_, v| v.elapsed() < Duration::from_secs(90));
+                sleep(Duration::from_secs(60)).await;
+            }
+        });
+    }
+
+    fn poll_transactions(&self) {
+        let grpc_client = self.grpc_client.clone();
+        let signature_cache = self.signature_cache.clone();
+        tokio::spawn(async move {
+            loop {
+                let mut grpc_tx;
+                let mut grpc_rx;
+                {
+                    let mut grpc_client = grpc_client.write().await;
+                    let subscription = grpc_client
+                        .subscribe_with_request(Some(get_signature_subscribe_request()))
+                        .await;
+                    if let Err(e) = subscription {
+                        error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
+                        statsd_count!("grpc_subscribe_error", 1);
+                        sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                    (grpc_tx, grpc_rx) = subscription.unwrap();
+                }
+                while let Some(message) = grpc_rx.next().await {
+                    match message {
+                        Ok(message) => match message.update_oneof {
+                            Some(UpdateOneof::Transaction(tx)) => {
+                                if let Some(transaction) = tx.transaction {
+                                    let signature =
+                                        Signature::new(&transaction.signature).to_string();
+                                    signature_cache.insert(signature, Instant::now());
+                                } else {
+                                    error!("Transaction update missing transaction");
+                                }
+                                info!("Transaction update");
+                            }
+                            Some(UpdateOneof::Ping(_)) => {
+                                // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
+                                // require periodic client pings then this is unnecessary
+                                let ping = grpc_tx.send(ping()).await;
+                                if let Err(e) = ping {
+                                    error!("Error sending ping: {}", e);
+                                    statsd_count!("grpc_ping_error", 1);
+                                    break;
+                                }
+                            }
+                            Some(UpdateOneof::Pong(_)) => {}
+                            _ => {
+                                error!("Unknown message: {:?}", message);
+                            }
+                        },
+                        Err(error) => {
+                            error!("error in txn subscribe, resubscribing in 1 second: {error:?}");
+                            sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+                }
+            }
+        });
     }
 
     fn poll_slots(&self) {
@@ -46,17 +121,17 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
             loop {
                 let mut grpc_tx;
                 let mut grpc_rx;
-                // let grpc_tx_write = grpc_tx.write().await;
-                let mut grpc_client = grpc_client.write().await;
-                let subscription = grpc_client.subscribe().await;
-                drop(grpc_client);
-                if let Err(e) = subscription {
-                    error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
-                    statsd_count!("grpc_subscribe_error", 1);
-                    sleep(Duration::from_secs(1)).await;
-                    continue;
+                {
+                    let mut grpc_client = grpc_client.write().await;
+                    let subscription = grpc_client.subscribe().await;
+                    if let Err(e) = subscription {
+                        error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
+                        statsd_count!("grpc_subscribe_error", 1);
+                        sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                    (grpc_tx, grpc_rx) = subscription.unwrap();
                 }
-                (grpc_tx, grpc_rx) = subscription.unwrap();
                 grpc_tx.send(get_slot_subscribe_request()).await.unwrap();
                 while let Some(message) = grpc_rx.next().await {
                     match message {
@@ -101,38 +176,12 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 #[async_trait]
 impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
-        let mut grpc_rx;
-        {
-            info!("subscribing with: {}", signature);
-            let mut grpc_client = self.grpc_client.write().await;
-            let subscription = grpc_client
-                .subscribe_with_request(Some(get_signature_subscribe_request(signature)))
-                .await;
-            drop(grpc_client);
-            if let Err(e) = subscription {
-                error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
-                statsd_count!("grpc_subscribe_error", 1);
-                return false;
-            }
-            (_, grpc_rx) = subscription.unwrap();
-        }
         let start = Instant::now();
-        while let Some(message) = grpc_rx.next().await {
-            match message {
-                Ok(message) => match message.update_oneof {
-                    Some(UpdateOneof::Transaction(_)) => {
-                        return true;
-                    }
-                    _ => {}
-                },
-                Err(error) => {
-                    error!("error in txn subscribe: {error:?}");
-                    return false;
-                }
+        while start.elapsed() < Duration::from_secs(90) {
+            if self.signature_cache.contains_key(&signature) {
+                return true;
             }
-            if start.elapsed() > Duration::from_secs(90) {
-                return false;
-            }
+            sleep(Duration::from_millis(50)).await;
         }
         return false;
     }
@@ -151,20 +200,20 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     }
 }
 
-fn get_signature_subscribe_request(signature: String) -> SubscribeRequest {
+fn get_signature_subscribe_request() -> SubscribeRequest {
     SubscribeRequest {
         transactions: HashMap::from_iter(vec![(
-            signature.to_string(),
+            "txn_sub".to_string(),
             SubscribeRequestFilterTransactions {
                 vote: Some(false),
                 failed: Some(true),
-                signature: Some(signature),
+                signature: None,
                 account_include: vec![],
                 account_exclude: vec![],
                 account_required: vec![],
             },
         )]),
-        commitment: Some(CommitmentLevel::Finalized.into()),
+        commitment: Some(CommitmentLevel::Confirmed.into()),
         ..Default::default()
     }
 }
