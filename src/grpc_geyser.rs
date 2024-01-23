@@ -1,3 +1,4 @@
+use std::time::Instant;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
@@ -114,36 +115,25 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
             }
             (_, grpc_rx) = subscription.unwrap();
         }
-
-        loop {
-            let timeout = sleep(Duration::from_secs(90));
-            futures::pin_mut!(timeout);
-            match future::select(timeout, grpc_rx.next()).await {
-                future::Either::Left(_) => {
-                    error!("Timeout waiting for signature to land");
+        let start = Instant::now();
+        while let Some(message) = grpc_rx.next().await {
+            match message {
+                Ok(message) => match message.update_oneof {
+                    Some(UpdateOneof::Transaction(_)) => {
+                        return true;
+                    }
+                    _ => {}
+                },
+                Err(error) => {
+                    error!("error in txn subscribe: {error:?}");
                     return false;
                 }
-                future::Either::Right((message, _)) => {
-                    if message.is_none() {
-                        error!("gRPC stream disconnected in txn subscribe");
-                        return false;
-                    }
-                    let message = message.unwrap();
-                    match message {
-                        Ok(message) => match message.update_oneof {
-                            Some(UpdateOneof::Transaction(_)) => {
-                                return true;
-                            }
-                            _ => {}
-                        },
-                        Err(error) => {
-                            error!("error in txn subscribe: {error:?}");
-                            return false;
-                        }
-                    }
-                }
+            }
+            if start.elapsed() > Duration::from_secs(90) {
+                return false;
             }
         }
+        return false;
     }
     fn get_next_slot(&self) -> Option<u64> {
         match self.outbound_slot_rx.try_recv() {
@@ -163,7 +153,7 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
 fn get_signature_subscribe_request(signature: String) -> SubscribeRequest {
     SubscribeRequest {
         transactions: HashMap::from_iter(vec![(
-            "txn_sub".to_string(),
+            signature.to_string(),
             SubscribeRequestFilterTransactions {
                 vote: Some(false),
                 failed: Some(true),
