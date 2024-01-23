@@ -103,6 +103,7 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
         let mut grpc_rx;
         {
+            info!("subscribing with: {}", signature);
             let mut grpc_client = self.grpc_client.write().await;
             let subscription = grpc_client
                 .subscribe_with_request(Some(get_signature_subscribe_request(signature)))
@@ -163,7 +164,7 @@ fn get_signature_subscribe_request(signature: String) -> SubscribeRequest {
                 account_required: vec![],
             },
         )]),
-        commitment: Some(CommitmentLevel::Confirmed.into()),
+        commitment: Some(CommitmentLevel::Finalized.into()),
         ..Default::default()
     }
 }
