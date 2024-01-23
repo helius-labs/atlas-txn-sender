@@ -10,10 +10,12 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use solana_sdk::signature::Signature;
 use solana_sdk::slot_history::Slot;
+use solana_sdk::transaction;
 use tokio::{sync::RwLock, time::sleep};
 use tonic::async_trait;
 use tracing::{error, info};
 use yellowstone_grpc_client::GeyserGrpcClient;
+use yellowstone_grpc_proto::geyser::SubscribeRequestFilterBlocks;
 use yellowstone_grpc_proto::{
     geyser::{
         subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
@@ -43,7 +45,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
         // polling with confirmed commitment to get confirmed transactions
-        grpc_geyser.poll_transactions();
+        grpc_geyser.poll_blocks();
         grpc_geyser.clean_signature_cache();
         grpc_geyser
     }
@@ -59,7 +61,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         });
     }
 
-    fn poll_transactions(&self) {
+    fn poll_blocks(&self) {
         let grpc_client = self.grpc_client.clone();
         let signature_cache = self.signature_cache.clone();
         tokio::spawn(async move {
@@ -69,7 +71,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                 {
                     let mut grpc_client = grpc_client.write().await;
                     let subscription = grpc_client
-                        .subscribe_with_request(Some(get_signature_subscribe_request()))
+                        .subscribe_with_request(Some(get_block_subscribe_request()))
                         .await;
                     if let Err(e) = subscription {
                         error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
@@ -82,13 +84,11 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                 while let Some(message) = grpc_rx.next().await {
                     match message {
                         Ok(message) => match message.update_oneof {
-                            Some(UpdateOneof::Transaction(tx)) => {
-                                if let Some(transaction) = tx.transaction {
+                            Some(UpdateOneof::Block(block)) => {
+                                for transaction in block.transactions {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
                                     signature_cache.insert(signature, Instant::now());
-                                } else {
-                                    error!("Transaction update missing transaction");
                                 }
                             }
                             Some(UpdateOneof::Ping(_)) => {
@@ -225,6 +225,22 @@ fn get_signature_subscribe_request() -> SubscribeRequest {
                 account_required: vec![],
             },
         )]),
+        ..Default::default()
+    }
+}
+
+fn get_block_subscribe_request() -> SubscribeRequest {
+    SubscribeRequest {
+        blocks: HashMap::from_iter(vec![(
+            generate_random_string(20),
+            SubscribeRequestFilterBlocks {
+                account_include: vec![],
+                include_transactions: Some(true),
+                include_accounts: Some(false),
+                include_entries: Some(false),
+            },
+        )]),
+        commitment: Some(CommitmentLevel::Confirmed.into()),
         ..Default::default()
     }
 }
