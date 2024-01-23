@@ -53,7 +53,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         tokio::spawn(async move {
             loop {
                 let signature_cache = signature_cache.clone();
-                signature_cache.retain(|_, v| v.elapsed() < Duration::from_secs(90));
+                signature_cache.retain(|_, v| v.elapsed() < Duration::from_secs(300));
                 sleep(Duration::from_secs(60)).await;
             }
         });
@@ -86,7 +86,6 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                                 if let Some(transaction) = tx.transaction {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
-                                    info!(geyser = true, "{}", signature);
                                     signature_cache.insert(signature, Instant::now());
                                 } else {
                                     error!("Transaction update missing transaction");
@@ -113,6 +112,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         }
                     }
                 }
+                error!("exiting loop");
             }
         });
     }
@@ -180,9 +180,8 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 #[async_trait]
 impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
-        info!(geyser = false, "{}", signature);
         let start = Instant::now();
-        while start.elapsed() < Duration::from_secs(90) {
+        while start.elapsed() < Duration::from_secs(300) {
             if self.signature_cache.contains_key(&signature) {
                 return true;
             }
