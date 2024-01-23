@@ -38,7 +38,9 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
             outbound_slot_tx,
             signature_cache: DashMap::new(),
         };
+        // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
+        // polling with confirmed commitment to get confirmed transactions
         grpc_geyser.poll_transactions();
         grpc_geyser.clean_signature_cache();
         grpc_geyser
@@ -82,6 +84,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                                 if let Some(transaction) = tx.transaction {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
+                                    info!("{}", signature);
                                     signature_cache.insert(signature, Instant::now());
                                 } else {
                                     error!("Transaction update missing transaction");
@@ -175,6 +178,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 #[async_trait]
 impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
+        info!("{}", signature);
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(90) {
             if self.signature_cache.contains_key(&signature) {
