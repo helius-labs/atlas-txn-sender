@@ -30,7 +30,7 @@ pub struct GrpcGeyserImpl<T> {
     grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
     outbound_slot_rx: Receiver<Slot>,
     outbound_slot_tx: Sender<Slot>,
-    signature_cache: DashMap<String, Instant>,
+    signature_cache: Arc<DashMap<String, Instant>>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
@@ -40,7 +40,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
             grpc_client,
             outbound_slot_rx,
             outbound_slot_tx,
-            signature_cache: DashMap::new(),
+            signature_cache: Arc::new(DashMap::new()),
         };
         // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
