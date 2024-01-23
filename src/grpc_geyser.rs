@@ -84,6 +84,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                                 if let Some(transaction) = tx.transaction {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
+                                    info!(geyser = true, "{}", signature);
                                     signature_cache.insert(signature, Instant::now());
                                 } else {
                                     error!("Transaction update missing transaction");
@@ -177,6 +178,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 #[async_trait]
 impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
+        info!(geyser = false, "{}", signature);
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(90) {
             if self.signature_cache.contains_key(&signature) {
@@ -206,7 +208,7 @@ fn get_signature_subscribe_request() -> SubscribeRequest {
         transactions: HashMap::from_iter(vec![(
             "txn_sub".to_string(),
             SubscribeRequestFilterTransactions {
-                vote: Some(false),
+                vote: None,
                 failed: None,
                 signature: None,
                 account_include: vec![],
