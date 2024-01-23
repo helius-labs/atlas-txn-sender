@@ -6,6 +6,8 @@ use crossbeam::channel::{Receiver, Sender};
 use dashmap::{DashMap, DashSet};
 use futures::sink::SinkExt;
 use futures::StreamExt;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use solana_sdk::signature::Signature;
 use solana_sdk::slot_history::Slot;
 use tokio::{sync::RwLock, time::sleep};
@@ -203,10 +205,18 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     }
 }
 
+fn generate_random_string(len: usize) -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
+
 fn get_signature_subscribe_request() -> SubscribeRequest {
     SubscribeRequest {
         transactions: HashMap::from_iter(vec![(
-            "txn_sub".to_string(),
+            generate_random_string(20),
             SubscribeRequestFilterTransactions {
                 vote: None,
                 failed: None,
@@ -224,7 +234,7 @@ fn get_signature_subscribe_request() -> SubscribeRequest {
 fn get_slot_subscribe_request() -> SubscribeRequest {
     SubscribeRequest {
         slots: HashMap::from_iter(vec![(
-            "slot_sub".to_string(),
+            generate_random_string(20).to_string(),
             SubscribeRequestFilterSlots {
                 filter_by_commitment: Some(true),
             },
