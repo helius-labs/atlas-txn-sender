@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
 use crossbeam::channel::{Receiver, Sender};
+use futures::sink::SinkExt;
 use futures::StreamExt;
-use futures::{future, sink::SinkExt};
 use solana_sdk::slot_history::Slot;
 use tokio::{sync::RwLock, time::sleep};
 use tonic::async_trait;
@@ -12,8 +12,8 @@ use tracing::{error, info};
 use yellowstone_grpc_client::GeyserGrpcClient;
 use yellowstone_grpc_proto::{
     geyser::{
-        subscribe_update::UpdateOneof, SubscribeRequest, SubscribeRequestFilterSlots,
-        SubscribeRequestFilterTransactions, SubscribeRequestPing,
+        subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
+        SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions, SubscribeRequestPing,
     },
     tonic::service::Interceptor,
 };
@@ -163,6 +163,7 @@ fn get_signature_subscribe_request(signature: String) -> SubscribeRequest {
                 account_required: vec![],
             },
         )]),
+        commitment: Some(CommitmentLevel::Confirmed.into()),
         ..Default::default()
     }
 }
