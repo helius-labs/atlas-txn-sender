@@ -225,7 +225,6 @@ fn get_signature_subscribe_request() -> SubscribeRequest {
                 account_required: vec![],
             },
         )]),
-        commitment: Some(CommitmentLevel::Confirmed.into()),
         ..Default::default()
     }
 }
