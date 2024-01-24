@@ -8,6 +8,8 @@ The service has the following envs:
 
 `GRPC_URL` - GRPC url used to stream latest slots and blocks. Slots tell us what to call `getSlotLeaders` with, blocks tell us if the txns we've sent were sent successfully.
 
+`X_TOKEN` - token used to authenticate with the grpc url
+
 `TPU_CONNECTION_POOL_SIZE` (Optional)- Number of leaders to cache connections to, and send transactions to. The default in the solana client is 4.
 
 `IDENTITY_KEYPAIR_FILE` - Path to the keypair file. If this is a validator key it will use a staked connection to the validator.

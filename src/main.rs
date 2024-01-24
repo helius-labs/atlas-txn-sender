@@ -1,3 +1,4 @@
+mod connection_manager;
 mod errors;
 mod grpc_geyser;
 mod leader_tracker;
@@ -15,14 +16,15 @@ use std::{
 
 use cadence::{BufferedUdpMetricSink, QueuingMetricSink, StatsdClient};
 use cadence_macros::set_global_default;
+use connection_manager::ConnectionManagerImpl;
 use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
 use leader_tracker::LeaderTrackerImpl;
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
-use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
-use solana_sdk::signature::{read_keypair_file, Keypair};
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::signature::read_keypair_file;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use transaction_store::TransactionStoreImpl;
@@ -36,6 +38,8 @@ struct AtlasTxnSenderEnv {
     rpc_url: Option<String>,
     port: Option<u16>,
     tpu_connection_pool_size: Option<usize>,
+    x_token: Option<String>,
+    num_identities: Option<usize>,
 }
 
 // Defualt on RPC is 4
@@ -66,26 +70,27 @@ async fn main() -> anyhow::Result<()> {
         .build(format!("0.0.0.0:{}", port))
         .await
         .unwrap();
-    let identity_keypair;
-    if let Some(identity_keypair_file) = env.identity_keypair_file.clone() {
-        identity_keypair =
-            read_keypair_file(identity_keypair_file).expect("keypair file must exist");
-    } else {
-        identity_keypair = Keypair::new();
-    }
     let tpu_connection_pool_size = env
         .tpu_connection_pool_size
         .unwrap_or(DEFAULT_TPU_CONNECTION_POOL_SIZE);
-    let connection_cache = Arc::new(ConnectionCache::new_with_client_options(
-        "atlas-txn-sender",
-        tpu_connection_pool_size,
-        None, // created if none specified
-        Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
-        None, // not used as far as I can tell
-    ));
+    let connection_manager;
+    if let Some(identity_keypair_file) = env.identity_keypair_file.clone() {
+        let identity_keypair =
+            read_keypair_file(identity_keypair_file).expect("keypair file must exist");
+        connection_manager = Arc::new(ConnectionManagerImpl::new_with_identity(
+            identity_keypair,
+            tpu_connection_pool_size,
+        ));
+    } else {
+        connection_manager = Arc::new(ConnectionManagerImpl::new_multi(
+            env.num_identities.unwrap_or(1),
+            tpu_connection_pool_size,
+        ));
+    }
 
     let client = Arc::new(RwLock::new(
-        GeyserGrpcClient::connect::<String, String>(env.grpc_url.unwrap(), None, None).unwrap(),
+        GeyserGrpcClient::connect::<String, String>(env.grpc_url.unwrap(), env.x_token, None)
+            .unwrap(),
     ));
     let transaction_store = Arc::new(TransactionStoreImpl::new());
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(client));
@@ -96,9 +101,9 @@ async fn main() -> anyhow::Result<()> {
         tpu_connection_pool_size,
     ));
     let txn_sender = Arc::new(TxnSenderImpl::new(
-        leader_tracker.clone(),
+        leader_tracker,
         transaction_store,
-        connection_cache.clone(),
+        connection_manager,
         solana_rpc,
     ));
     let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
