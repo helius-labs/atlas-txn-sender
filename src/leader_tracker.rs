@@ -116,7 +116,21 @@ impl LeaderTrackerImpl {
                 error!("Leader {} not found in cluster nodes", leader);
             }
         }
+        self.clean_up_slot_leaders();
         Ok(())
+    }
+
+    fn clean_up_slot_leaders(&self) {
+        let cur_slot = self.cur_slot.load(Ordering::Relaxed);
+        let mut slots_to_remove = vec![];
+        for leaders in self.cur_leaders.iter() {
+            if leaders.key().clone() < cur_slot {
+                slots_to_remove.push(leaders.key().clone());
+            }
+        }
+        for slot in slots_to_remove {
+            self.cur_leaders.remove(&slot);
+        }
     }
 }
 
