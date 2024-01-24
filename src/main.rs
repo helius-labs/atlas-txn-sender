@@ -8,11 +8,7 @@ mod transaction_store;
 mod txn_sender;
 mod vendor;
 
-use std::{
-    env,
-    net::{IpAddr, Ipv4Addr, UdpSocket},
-    sync::Arc,
-};
+use std::{env, net::UdpSocket, sync::Arc};
 
 use cadence::{BufferedUdpMetricSink, QueuingMetricSink, StatsdClient};
 use cadence_macros::set_global_default;
