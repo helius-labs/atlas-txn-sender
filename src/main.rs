@@ -35,7 +35,7 @@ struct AtlasTxnSenderEnv {
     port: Option<u16>,
     tpu_connection_pool_size: Option<usize>,
     x_token: Option<String>,
-    num_identities: Option<usize>,
+    num_connections: Option<usize>, // Max in labs client is 8
 }
 
 // Defualt on RPC is 4
@@ -69,17 +69,19 @@ async fn main() -> anyhow::Result<()> {
     let tpu_connection_pool_size = env
         .tpu_connection_pool_size
         .unwrap_or(DEFAULT_TPU_CONNECTION_POOL_SIZE);
+    let num_connections = env.num_connections.unwrap_or(1);
     let connection_manager;
     if let Some(identity_keypair_file) = env.identity_keypair_file.clone() {
         let identity_keypair =
             read_keypair_file(identity_keypair_file).expect("keypair file must exist");
-        connection_manager = Arc::new(ConnectionManagerImpl::new_with_identity(
+        connection_manager = Arc::new(ConnectionManagerImpl::new_multi_with_identity(
+            num_connections,
             identity_keypair,
             tpu_connection_pool_size,
         ));
     } else {
         connection_manager = Arc::new(ConnectionManagerImpl::new_multi(
-            env.num_identities.unwrap_or(1),
+            num_connections,
             tpu_connection_pool_size,
         ));
     }
