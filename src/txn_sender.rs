@@ -1,13 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
-use cadence_macros::{statsd_count, statsd_time};
-use solana_client::nonblocking::tpu_connection::TpuConnection;
+use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
+use solana_client::{
+    connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
+};
 use tokio::time::sleep;
 use tonic::async_trait;
 use tracing::{error, warn};
 
 use crate::{
-    connection_manager::ConnectionManager,
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
@@ -21,25 +22,22 @@ pub trait TxnSender: Send + Sync {
 pub struct TxnSenderImpl {
     leader_tracker: Arc<dyn LeaderTracker>,
     transaction_store: Arc<dyn TransactionStore>,
-    connection_manager: Arc<dyn ConnectionManager>,
+    connection_manager: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
-    num_connections: usize,
 }
 
 impl TxnSenderImpl {
     pub fn new(
         leader_tracker: Arc<dyn LeaderTracker>,
         transaction_store: Arc<dyn TransactionStore>,
-        connection_manager: Arc<dyn ConnectionManager>,
+        connection_manager: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
-        num_connections: usize,
     ) -> Self {
         let txn_sender = Self {
             leader_tracker,
             transaction_store,
             connection_manager,
             solana_rpc,
-            num_connections,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -49,10 +47,9 @@ impl TxnSenderImpl {
         let leader_tracker = self.leader_tracker.clone();
         let transaction_store = self.transaction_store.clone();
         let connection_manager = self.connection_manager.clone();
-        let num_connections = self.num_connections;
         tokio::spawn(async move {
             loop {
-                let wire_transactions = transaction_store.get_wire_transactions();
+                let wire_transactions = Arc::new(transaction_store.get_wire_transactions());
                 let num_retries = wire_transactions.len();
                 for leader in leader_tracker.get_leaders() {
                     if leader.tpu_quic.is_none() {
@@ -61,12 +58,11 @@ impl TxnSenderImpl {
                     }
                     let connection_manager = connection_manager.clone();
                     let wire_transactions = wire_transactions.clone();
-                    let num_connections = num_connections.clone();
                     tokio::spawn(async move {
-                        for i in 0..num_connections {
+                        for i in 0..3 {
                             let conn = connection_manager
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                            if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
+                            if let Err(e) = conn.send_data_batch(&wire_transactions).await {
                                 if i == 2 {
                                     error!(
                                         "Failed to send transaction batch to {:?}: {}",
@@ -84,7 +80,7 @@ impl TxnSenderImpl {
                         }
                     });
                 }
-                statsd_count!("send_transaction_retries", num_retries as i64);
+                statsd_gauge!("transaction_retry_queue_length", num_retries as u64);
                 sleep(Duration::from_secs(1)).await;
             }
         });

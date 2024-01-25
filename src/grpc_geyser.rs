@@ -181,7 +181,8 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
     async fn confirm_transaction(&self, signature: String) -> bool {
         let start = Instant::now();
-        while start.elapsed() < Duration::from_secs(90) {
+        // in practice if a tx doesn't land in less than 60 seconds it's probably not going to land
+        while start.elapsed() < Duration::from_secs(60) {
             if self.signature_cache.contains_key(&signature) {
                 return true;
             }

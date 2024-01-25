@@ -1,4 +1,3 @@
-mod connection_manager;
 mod errors;
 mod grpc_geyser;
 mod leader_tracker;
@@ -8,19 +7,22 @@ mod transaction_store;
 mod txn_sender;
 mod vendor;
 
-use std::{env, net::UdpSocket, sync::Arc};
+use std::{
+    env,
+    net::{IpAddr, Ipv4Addr, UdpSocket},
+    sync::Arc,
+};
 
 use cadence::{BufferedUdpMetricSink, QueuingMetricSink, StatsdClient};
 use cadence_macros::set_global_default;
-use connection_manager::ConnectionManagerImpl;
 use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
 use leader_tracker::LeaderTrackerImpl;
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::signature::read_keypair_file;
+use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
+use solana_sdk::signature::{read_keypair_file, Keypair};
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use transaction_store::TransactionStoreImpl;
@@ -35,7 +37,6 @@ struct AtlasTxnSenderEnv {
     port: Option<u16>,
     tpu_connection_pool_size: Option<usize>,
     x_token: Option<String>,
-    num_connections: Option<usize>, // Max in labs client is 8
 }
 
 // Defualt on RPC is 4
@@ -69,20 +70,25 @@ async fn main() -> anyhow::Result<()> {
     let tpu_connection_pool_size = env
         .tpu_connection_pool_size
         .unwrap_or(DEFAULT_TPU_CONNECTION_POOL_SIZE);
-    let num_connections = env.num_connections.unwrap_or(1);
-    let connection_manager;
+    let connection_cache;
     if let Some(identity_keypair_file) = env.identity_keypair_file.clone() {
         let identity_keypair =
             read_keypair_file(identity_keypair_file).expect("keypair file must exist");
-        connection_manager = Arc::new(ConnectionManagerImpl::new_multi_with_identity(
-            num_connections,
-            identity_keypair,
+        connection_cache = Arc::new(ConnectionCache::new_with_client_options(
+            "atlas-txn-sender",
             tpu_connection_pool_size,
+            None, // created if none specified
+            Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
+            None, // not used as far as I can tell
         ));
     } else {
-        connection_manager = Arc::new(ConnectionManagerImpl::new_multi(
-            num_connections,
+        let identity_keypair = Keypair::new();
+        connection_cache = Arc::new(ConnectionCache::new_with_client_options(
+            "atlas-txn-sender",
             tpu_connection_pool_size,
+            None, // created if none specified
+            Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
+            None, // not used as far as I can tell
         ));
     }
 
@@ -101,9 +107,8 @@ async fn main() -> anyhow::Result<()> {
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker,
         transaction_store,
-        connection_manager,
+        connection_cache,
         solana_rpc,
-        num_connections,
     ));
     let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
     let handle = server.start(atlas_txn_sender.into_rpc());
