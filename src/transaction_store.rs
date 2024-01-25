@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
-use cadence_macros::statsd_time;
+use cadence_macros::{statsd_count, statsd_time};
 use dashmap::DashMap;
 use solana_sdk::transaction::VersionedTransaction;
 use tracing::error;
@@ -62,20 +62,27 @@ impl TransactionStore for TransactionStoreImpl {
     }
     fn get_wire_transactions<'a>(&self) -> Vec<Vec<u8>> {
         let start = Instant::now();
-        let wire_transactions;
-        if self.transactions.len() < 100_000 {
+        let wire_transactions: Vec<Vec<u8>>;
+        let max_queue = 40000;
+        if self.transactions.len() < max_queue {
             wire_transactions = self
                 .transactions
                 .iter()
                 .map(|t| t.value().wire_transaction.clone())
                 .collect();
         } else {
+            // crude mechanism for now for speed to prevent host pain
             wire_transactions = self
                 .transactions
                 .iter()
-                .filter(|v| v.sent_at.elapsed().as_secs() < 30)
+                .filter(|v| v.sent_at.elapsed().as_secs() < 10)
+                .take(max_queue)
                 .map(|t| t.value().wire_transaction.clone())
                 .collect();
+            statsd_count!(
+                "transactions_dropped",
+                (self.transactions.len() - wire_transactions.len()) as i64
+            );
         }
         statsd_time!("get_wire_transactions_time", start.elapsed());
         wire_transactions
