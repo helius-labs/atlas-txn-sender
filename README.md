@@ -12,6 +12,8 @@ The service has the following envs:
 
 `TPU_CONNECTION_POOL_SIZE` (Optional)- Number of leaders to cache connections to, and send transactions to. The default in the solana client is 4.
 
+`NUM_LEADERS` - Number of leaders to send transactions to
+
 `IDENTITY_KEYPAIR_FILE` - Path to the keypair file. If this is a validator key it will use a staked connection to the validator.
 
 `PORT` - Port to run the service on. Default is 4040.

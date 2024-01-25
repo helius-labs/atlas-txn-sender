@@ -37,6 +37,7 @@ struct AtlasTxnSenderEnv {
     port: Option<u16>,
     tpu_connection_pool_size: Option<usize>,
     x_token: Option<String>,
+    num_leaders: Option<usize>,
 }
 
 // Defualt on RPC is 4
@@ -99,10 +100,11 @@ async fn main() -> anyhow::Result<()> {
     let transaction_store = Arc::new(TransactionStoreImpl::new());
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(client));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
+    let num_leaders = env.num_leaders.unwrap_or(4);
     let leader_tracker = Arc::new(LeaderTrackerImpl::new(
         rpc_client,
         solana_rpc.clone(),
-        tpu_connection_pool_size,
+        num_leaders,
     ));
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker,
