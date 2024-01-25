@@ -2,7 +2,6 @@ use std::{sync::Arc, time::Duration};
 
 use cadence_macros::{statsd_count, statsd_time};
 use solana_client::nonblocking::tpu_connection::TpuConnection;
-use solana_sdk::transport::TransportError;
 use tokio::time::sleep;
 use tonic::async_trait;
 use tracing::{error, warn};
@@ -24,6 +23,7 @@ pub struct TxnSenderImpl {
     transaction_store: Arc<dyn TransactionStore>,
     connection_manager: Arc<dyn ConnectionManager>,
     solana_rpc: Arc<dyn SolanaRpc>,
+    num_connections: usize,
 }
 
 impl TxnSenderImpl {
@@ -32,12 +32,14 @@ impl TxnSenderImpl {
         transaction_store: Arc<dyn TransactionStore>,
         connection_manager: Arc<dyn ConnectionManager>,
         solana_rpc: Arc<dyn SolanaRpc>,
+        num_connections: usize,
     ) -> Self {
         let txn_sender = Self {
             leader_tracker,
             transaction_store,
             connection_manager,
             solana_rpc,
+            num_connections,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -47,6 +49,7 @@ impl TxnSenderImpl {
         let leader_tracker = self.leader_tracker.clone();
         let transaction_store = self.transaction_store.clone();
         let connection_manager = self.connection_manager.clone();
+        let num_connections = self.num_connections;
         tokio::spawn(async move {
             loop {
                 let wire_transactions = transaction_store.get_wire_transactions();
@@ -58,8 +61,9 @@ impl TxnSenderImpl {
                     }
                     let connection_manager = connection_manager.clone();
                     let wire_transactions = wire_transactions.clone();
+                    let num_connections = num_connections.clone();
                     tokio::spawn(async move {
-                        for i in 0..3 {
+                        for i in 0..num_connections {
                             let conn = connection_manager
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
                             if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {

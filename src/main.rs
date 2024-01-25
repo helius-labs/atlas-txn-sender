@@ -103,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
         transaction_store,
         connection_manager,
         solana_rpc,
+        num_connections,
     ));
     let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
     let handle = server.start(atlas_txn_sender.into_rpc());
