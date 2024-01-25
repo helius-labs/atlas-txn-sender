@@ -16,6 +16,10 @@ The service has the following envs:
 
 `PORT` - Port to run the service on. Default is 4040.
 
-To run this service locally, all you need to do is clone it, set the envs above, and run
+### Install Dependencies
 
-`cargo run`
+`sudo apt-get install libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang cmake make libprotobuf-dev protobuf-compiler`
+
+### Running
+
+set the above envs and install dependencies, then run `cargo run`
