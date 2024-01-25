@@ -14,6 +14,8 @@ The service has the following envs:
 
 `IDENTITY_KEYPAIR_FILE` - Path to the keypair file. If this is a validator key it will use a staked connection to the validator.
 
+`PORT` - Port to run the service on. Default is 4040.
+
 To run this service locally, all you need to do is clone it, set the envs above, and run
 
 `cargo run`
