@@ -2,9 +2,10 @@ use std::{sync::Arc, time::Duration};
 
 use cadence_macros::{statsd_count, statsd_time};
 use solana_client::nonblocking::tpu_connection::TpuConnection;
+use solana_sdk::transport::TransportError;
 use tokio::time::sleep;
 use tonic::async_trait;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     connection_manager::ConnectionManager,
@@ -58,11 +59,24 @@ impl TxnSenderImpl {
                     let connection_manager = connection_manager.clone();
                     let wire_transactions = wire_transactions.clone();
                     tokio::spawn(async move {
-                        let conn = connection_manager
-                            .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                        if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
-                            error!("failed to send transaction batch to {:?}: {}", leader, e);
-                            statsd_count!("send_transaction_batch_error", 1);
+                        for i in 0..3 {
+                            let conn = connection_manager
+                                .get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                            if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
+                                if i == 2 {
+                                    error!(
+                                        "Failed to send transaction batch to {:?}: {}",
+                                        leader, e
+                                    );
+                                } else {
+                                    warn!(
+                                        "Retrying to send transaction batch to {:?}: {}",
+                                        leader, e
+                                    );
+                                }
+                            } else {
+                                return;
+                            }
                         }
                     });
                 }
@@ -107,10 +121,18 @@ impl TxnSender for TxnSenderImpl {
             let connection_manager = self.connection_manager.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
             tokio::spawn(async move {
-                let conn = connection_manager.get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                if let Err(e) = conn.send_data(&wire_transaction).await {
-                    error!("failed to send transaction to {:?}: {}", leader, e);
-                    statsd_count!("send_transaction_error", 1);
+                for i in 0..3 {
+                    let conn =
+                        connection_manager.get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                    if let Err(e) = conn.send_data(&wire_transaction).await {
+                        if i == 2 {
+                            error!("Failed to send transaction to {:?}: {}", leader, e);
+                        } else {
+                            warn!("Retrying to send transaction to {:?}: {}", leader, e);
+                        }
+                    } else {
+                        return;
+                    }
                 }
             });
         }

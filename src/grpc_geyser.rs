@@ -212,23 +212,6 @@ fn generate_random_string(len: usize) -> String {
         .collect()
 }
 
-fn get_signature_subscribe_request() -> SubscribeRequest {
-    SubscribeRequest {
-        transactions: HashMap::from_iter(vec![(
-            generate_random_string(20),
-            SubscribeRequestFilterTransactions {
-                vote: None,
-                failed: None,
-                signature: None,
-                account_include: vec![],
-                account_exclude: vec![],
-                account_required: vec![],
-            },
-        )]),
-        ..Default::default()
-    }
-}
-
 fn get_block_subscribe_request() -> SubscribeRequest {
     SubscribeRequest {
         blocks: HashMap::from_iter(vec![(
