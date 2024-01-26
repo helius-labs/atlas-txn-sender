@@ -31,7 +31,7 @@ pub struct GrpcGeyserImpl<T> {
     grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
     outbound_slot_rx: Receiver<Slot>,
     outbound_slot_tx: Sender<Slot>,
-    signature_cache: Arc<DashMap<String, UnixTimestamp>>,
+    signature_cache: Arc<DashMap<String, (UnixTimestamp, Instant)>>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
@@ -56,14 +56,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         tokio::spawn(async move {
             loop {
                 let signature_cache = signature_cache.clone();
-                let landed_time = signature_cache.retain(|_, v| {
-                    let elapsed = unix_to_time(v.clone()).elapsed();
-                    if let Ok(elapsed) = elapsed {
-                        elapsed.as_secs() < 90
-                    } else {
-                        false
-                    }
-                });
+                let landed_time = signature_cache.retain(|_, (_, v)| v.elapsed().as_secs() < 90);
                 sleep(Duration::from_secs(60)).await;
             }
         });
@@ -71,7 +64,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 
     fn poll_blocks(&self) {
         let grpc_client = self.grpc_client.clone();
-        let signature_cache: Arc<DashMap<String, UnixTimestamp>> = self.signature_cache.clone();
+        let signature_cache = self.signature_cache.clone();
         tokio::spawn(async move {
             loop {
                 let mut grpc_tx;
@@ -97,7 +90,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                                 for transaction in block.transactions {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
-                                    signature_cache.insert(signature, block_time);
+                                    signature_cache.insert(signature, (block_time, Instant::now()));
                                 }
                             }
                             Some(UpdateOneof::Ping(_)) => {
@@ -193,7 +186,7 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
         // in practice if a tx doesn't land in less than 60 seconds it's probably not going to land
         while start.elapsed() < Duration::from_secs(60) {
             if let Some(block_time) = self.signature_cache.get(&signature) {
-                return Some(block_time.clone());
+                return Some(block_time.0.clone());
             }
             sleep(Duration::from_millis(50)).await;
         }
