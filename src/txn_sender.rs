@@ -4,6 +4,8 @@ use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
+use solana_program_runtime::compute_budget::ComputeBudget;
+use solana_sdk::transaction::VersionedTransaction;
 use tokio::time::sleep;
 use tonic::async_trait;
 use tracing::{error, warn};
@@ -94,18 +96,46 @@ impl TxnSenderImpl {
         let signature = signature.unwrap();
         self.transaction_store
             .add_transaction(transaction_data.clone());
+        let priority_fees = compute_priority_fee(&transaction_data.versioned_transaction)
+            .map_or(false, |fee| fee > 0)
+            .to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         tokio::spawn(async move {
             let confirmed = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
             if confirmed {
-                statsd_count!("transactions_landed", 1);
+                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees);
                 statsd_time!("transaction_land_time", sent_at.elapsed());
             } else {
-                statsd_count!("transactions_not_landed", 1);
+                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
             }
         });
+    }
+}
+
+pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
+    let mut compute_budget = ComputeBudget::default();
+    if let Err(e) = transaction.sanitize() {
+        return None;
+    } else {
+        let instructions = transaction.message.instructions().iter().map(|ix| {
+            (
+                transaction
+                    .message
+                    .static_account_keys()
+                    .get(usize::from(ix.program_id_index))
+                    .expect("program id index is sanitized"),
+                ix,
+            )
+        });
+        let compute_budget = compute_budget.process_instructions(instructions, true, true);
+        match compute_budget {
+            Ok(compute_budget) => {
+                return Some(compute_budget.get_priority());
+            }
+            Err(e) => None,
+        }
     }
 }
 
