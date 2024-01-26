@@ -6,6 +6,7 @@ mod solana_rpc;
 mod transaction_store;
 mod txn_sender;
 mod vendor;
+mod utils;
 
 use std::{
     env,

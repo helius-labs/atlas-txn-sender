@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    alloc::System,
+    sync::Arc,
+    time::{Instant, SystemTime},
+};
 
 use cadence_macros::{statsd_count, statsd_time};
 use dashmap::DashMap;
@@ -10,6 +14,7 @@ pub struct TransactionData {
     pub wire_transaction: Vec<u8>,
     pub versioned_transaction: VersionedTransaction,
     pub sent_at: Instant,
+    pub sent_at_unix: SystemTime,
 }
 
 pub trait TransactionStore: Send + Sync {

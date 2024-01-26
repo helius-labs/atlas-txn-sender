@@ -1,16 +1,16 @@
-use std::time::Instant;
+use std::time::{Instant, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
 use crossbeam::channel::{Receiver, Sender};
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use futures::sink::SinkExt;
 use futures::StreamExt;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
+use solana_sdk::clock::UnixTimestamp;
 use solana_sdk::signature::Signature;
 use solana_sdk::slot_history::Slot;
-use solana_sdk::transaction;
 use tokio::{sync::RwLock, time::sleep};
 use tonic::async_trait;
 use tracing::{error, info};
@@ -19,18 +19,19 @@ use yellowstone_grpc_proto::geyser::SubscribeRequestFilterBlocks;
 use yellowstone_grpc_proto::{
     geyser::{
         subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
-        SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions, SubscribeRequestPing,
+        SubscribeRequestFilterSlots, SubscribeRequestPing,
     },
     tonic::service::Interceptor,
 };
 
 use crate::solana_rpc::SolanaRpc;
+use crate::utils::unix_to_time;
 
 pub struct GrpcGeyserImpl<T> {
     grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
     outbound_slot_rx: Receiver<Slot>,
     outbound_slot_tx: Sender<Slot>,
-    signature_cache: Arc<DashMap<String, Instant>>,
+    signature_cache: Arc<DashMap<String, UnixTimestamp>>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
@@ -55,7 +56,14 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         tokio::spawn(async move {
             loop {
                 let signature_cache = signature_cache.clone();
-                signature_cache.retain(|_, v| v.elapsed() < Duration::from_secs(90));
+                let landed_time = signature_cache.retain(|_, v| {
+                    let elapsed = unix_to_time(v.clone()).elapsed();
+                    if let Ok(elapsed) = elapsed {
+                        elapsed.as_secs() < 90
+                    } else {
+                        false
+                    }
+                });
                 sleep(Duration::from_secs(60)).await;
             }
         });
@@ -63,7 +71,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 
     fn poll_blocks(&self) {
         let grpc_client = self.grpc_client.clone();
-        let signature_cache = self.signature_cache.clone();
+        let signature_cache: Arc<DashMap<String, UnixTimestamp>> = self.signature_cache.clone();
         tokio::spawn(async move {
             loop {
                 let mut grpc_tx;
@@ -85,10 +93,11 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                     match message {
                         Ok(message) => match message.update_oneof {
                             Some(UpdateOneof::Block(block)) => {
+                                let block_time = block.block_time.unwrap().timestamp;
                                 for transaction in block.transactions {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
-                                    signature_cache.insert(signature, Instant::now());
+                                    signature_cache.insert(signature, block_time);
                                 }
                             }
                             Some(UpdateOneof::Ping(_)) => {
@@ -179,16 +188,16 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 
 #[async_trait]
 impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
-    async fn confirm_transaction(&self, signature: String) -> bool {
+    async fn confirm_transaction(&self, signature: String) -> Option<UnixTimestamp> {
         let start = Instant::now();
         // in practice if a tx doesn't land in less than 60 seconds it's probably not going to land
         while start.elapsed() < Duration::from_secs(60) {
-            if self.signature_cache.contains_key(&signature) {
-                return true;
+            if let Some(block_time) = self.signature_cache.get(&signature) {
+                return Some(block_time.clone());
             }
             sleep(Duration::from_millis(50)).await;
         }
-        return false;
+        return None;
     }
     fn get_next_slot(&self) -> Option<u64> {
         match self.outbound_slot_rx.try_recv() {

@@ -1,9 +1,8 @@
 use std::{
     fmt::Debug,
-    net::{IpAddr, Ipv4Addr},
     str::FromStr,
     sync::Arc,
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 use cadence_macros::{statsd_count, statsd_time};
@@ -12,15 +11,14 @@ use jsonrpsee::{
     proc_macros::rpc,
     types::{error::INVALID_PARAMS_CODE, ErrorObjectOwned},
 };
-use solana_client::connection_cache::ConnectionCache;
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
 use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
 use tracing::error;
 
 use crate::{
-    errors::invalid_request, leader_tracker::LeaderTracker, transaction_store::TransactionData,
-    txn_sender::TxnSender, vendor::solana_rpc::decode_and_deserialize,
+    errors::invalid_request, transaction_store::TransactionData, txn_sender::TxnSender,
+    vendor::solana_rpc::decode_and_deserialize,
 };
 
 #[rpc(server)]
@@ -76,6 +74,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             wire_transaction,
             versioned_transaction,
             sent_at: Instant::now(),
+            sent_at_unix: SystemTime::now(),
         };
         self.txn_sender.send_transaction(transaction).await;
         statsd_time!("send_transaction_time", start.elapsed());

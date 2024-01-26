@@ -14,6 +14,7 @@ use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
+    utils::unix_to_time,
 };
 
 #[async_trait]
@@ -88,7 +89,7 @@ impl TxnSenderImpl {
         });
     }
     fn track_transaction(&self, transaction_data: &TransactionData) {
-        let sent_at = transaction_data.sent_at.clone();
+        let sent_at_unix = transaction_data.sent_at_unix.clone();
         let signature = get_signature(transaction_data);
         if signature.is_none() {
             return;
@@ -102,11 +103,18 @@ impl TxnSenderImpl {
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         tokio::spawn(async move {
-            let confirmed = solana_rpc.confirm_transaction(signature.clone()).await;
+            let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
-            if confirmed {
+            if let Some(confirmed_at) = confirmed_at {
                 statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees);
-                statsd_time!("transaction_land_time", sent_at.elapsed());
+                match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
+                    Ok(land_time) => {
+                        statsd_time!("transaction_land_time", land_time.as_secs() as u64);
+                    }
+                    Err(e) => {
+                        error!("Error computing land time: {}", e);
+                    }
+                }
             } else {
                 statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
             }
