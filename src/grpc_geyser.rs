@@ -1,9 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Instant, UNIX_EPOCH};
+use std::time::Instant;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
-use crossbeam::channel::{Receiver, Sender};
 use dashmap::DashMap;
 use futures::sink::SinkExt;
 use futures::StreamExt;
@@ -11,7 +10,6 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use solana_sdk::clock::UnixTimestamp;
 use solana_sdk::signature::Signature;
-use solana_sdk::slot_history::Slot;
 use tokio::{sync::RwLock, time::sleep};
 use tonic::async_trait;
 use tracing::{error, info};
@@ -54,7 +52,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
         tokio::spawn(async move {
             loop {
                 let signature_cache = signature_cache.clone();
-                let landed_time = signature_cache.retain(|_, (_, v)| v.elapsed().as_secs() < 90);
+                signature_cache.retain(|_, (_, v)| v.elapsed().as_secs() < 90);
                 sleep(Duration::from_secs(60)).await;
             }
         });
