@@ -107,7 +107,7 @@ impl TxnSenderImpl {
             transaction_store.remove_transaction(signature);
             if let Some(confirmed_at) = confirmed_at {
                 statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees);
-                statsd_time!("transaction_land_time", sent_at.elapsed().as_secs() as u64);
+                statsd_time!("transaction_land_time", sent_at.elapsed().as_secs() as u64, "priority_fees" => &priority_fees);
                 // This code doesn't behave as expected, it returns very low times and sometimes negative times, maybe the txns land extremely fast, but it seems fishy.
                 // match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
                 //     Ok(land_time) => {
