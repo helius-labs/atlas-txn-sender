@@ -14,7 +14,6 @@ use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
-    utils::unix_to_time,
 };
 
 #[async_trait]

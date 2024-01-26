@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
@@ -29,18 +30,15 @@ use crate::utils::unix_to_time;
 
 pub struct GrpcGeyserImpl<T> {
     grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>,
-    outbound_slot_rx: Receiver<Slot>,
-    outbound_slot_tx: Sender<Slot>,
+    cur_slot: Arc<AtomicU64>,
     signature_cache: Arc<DashMap<String, (UnixTimestamp, Instant)>>,
 }
 
 impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
     pub fn new(grpc_client: Arc<RwLock<GeyserGrpcClient<T>>>) -> Self {
-        let (outbound_slot_tx, outbound_slot_rx) = crossbeam::channel::unbounded();
         let grpc_geyser = Self {
             grpc_client,
-            outbound_slot_rx,
-            outbound_slot_tx,
+            cur_slot: Arc::new(AtomicU64::new(0)),
             signature_cache: Arc::new(DashMap::new()),
         };
         // polling with processed commitment to get latest leaders
@@ -121,7 +119,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
 
     fn poll_slots(&self) {
         let grpc_client = self.grpc_client.clone();
-        let outbound_slot_tx = self.outbound_slot_tx.clone();
+        let cur_slot = self.cur_slot.clone();
         // let grpc_tx = self.grpc_tx.clone();
         tokio::spawn(async move {
             loop {
@@ -144,11 +142,7 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         Ok(msg) => {
                             match msg.update_oneof {
                                 Some(UpdateOneof::Slot(slot)) => {
-                                    if let Err(e) = outbound_slot_tx.send(slot.slot) {
-                                        error!("Error sending slot: {}", e);
-                                        statsd_count!("outbound_slot_tx_error", 1);
-                                        continue;
-                                    }
+                                    cur_slot.store(slot.slot, Ordering::Relaxed);
                                 }
                                 Some(UpdateOneof::Ping(_)) => {
                                     // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
@@ -193,17 +187,11 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
         return None;
     }
     fn get_next_slot(&self) -> Option<u64> {
-        match self.outbound_slot_rx.try_recv() {
-            Ok(slot) => Some(slot),
-            Err(e) => {
-                if e == crossbeam::channel::TryRecvError::Empty {
-                    None
-                } else {
-                    error!("Error receiving slot: {}", e);
-                    None
-                }
-            }
+        let cur_slot = self.cur_slot.load(Ordering::Relaxed);
+        if cur_slot == 0 {
+            return None;
         }
+        Some(cur_slot)
     }
 }
 
