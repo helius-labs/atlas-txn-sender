@@ -92,12 +92,6 @@ fn validate_send_transaction_params(
     if !params.skip_preflight {
         return Err(invalid_request("skip_preflight is not supported"));
     }
-    if params.preflight_commitment.is_some() {
-        return Err(invalid_request("preflight_commitment is not supported"));
-    }
-    if params.min_context_slot.is_some() {
-        return Err(invalid_request("min_context_slot is not supported"));
-    }
     Ok(())
 }
 
