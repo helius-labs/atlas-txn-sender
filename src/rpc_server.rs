@@ -90,7 +90,7 @@ fn validate_send_transaction_params(
     params: &RpcSendTransactionConfig,
 ) -> Result<(), ErrorObjectOwned> {
     if !params.skip_preflight {
-        return Err(invalid_request("skip_preflight is not supported"));
+        return Err(invalid_request("running preflight check is not supported"));
     }
     Ok(())
 }
