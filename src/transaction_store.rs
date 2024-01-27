@@ -22,7 +22,7 @@ pub struct TransactionData {
 pub trait TransactionStore: Send + Sync {
     fn add_transaction(&self, transaction: TransactionData);
     fn get_signatures(&self) -> Vec<String>;
-    fn remove_transaction(&self, signature: String);
+    fn remove_transaction(&self, signature: String) -> Option<TransactionData>;
     fn get_transactions(&self) -> Arc<DashMap<String, TransactionData>>;
 }
 
@@ -62,10 +62,11 @@ impl TransactionStore for TransactionStoreImpl {
         statsd_time!("get_signatures_time", start.elapsed());
         signatures
     }
-    fn remove_transaction(&self, signature: String) {
+    fn remove_transaction(&self, signature: String) -> Option<TransactionData> {
         let start = Instant::now();
-        let _ = self.transactions.remove(&signature);
+        let transaction = self.transactions.remove(&signature);
         statsd_time!("remove_signature_time", start.elapsed());
+        transaction.map_or(None, |t| Some(t.1))
     }
     fn get_transactions(&self) -> Arc<DashMap<String, TransactionData>> {
         self.transactions.clone()

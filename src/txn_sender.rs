@@ -101,12 +101,19 @@ impl TxnSenderImpl {
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
                     statsd_count!("transactions_reached_max_retries", 1);
-                    transaction_store.remove_transaction(signature);
+                    let transaction_data = transaction_store.remove_transaction(signature);
+                    if let Some(transaction_data) = transaction_data {
+                        let priority_fees =
+                            compute_priority_fee(&transaction_data.versioned_transaction)
+                                .map_or(false, |fee| fee > 0)
+                                .to_string();
+                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
+                        statsd_gauge!(
+                            "transaction_retry_queue_length",
+                            transaction_retry_queue_length as u64
+                        );
+                    }
                 }
-                statsd_gauge!(
-                    "transaction_retry_queue_length",
-                    transaction_retry_queue_length as u64
-                );
                 sleep(Duration::from_secs(1)).await;
             }
         });
