@@ -2,19 +2,21 @@
 
 This package uses the min required dependencies to send transactions to Solana leaders.
 
+**Note:** This service does not handle preflight checks, and also doesn't validate blockhashes before sending to leader
+
 The service has the following envs:
 
 `RPC_URL` - RPC url used to fetch next leaders with `getSlotLeaders`
 
-`GRPC_URL` - GRPC url used to stream latest slots and blocks. Slots tell us what to call `getSlotLeaders` with, blocks tell us if the txns we've sent were sent successfully.
+`GRPC_URL` - Yellowstone GRPC Geyser url used to stream latest slots and blocks. Slots tell us what to call `getSlotLeaders` with, blocks tell us if the txns we've sent were sent successfully.
 
 `X_TOKEN` - token used to authenticate with the grpc url
 
-`TPU_CONNECTION_POOL_SIZE` (Optional)- Number of leaders to cache connections to, and send transactions to. The default in the solana client is 4.
+`TPU_CONNECTION_POOL_SIZE` - Number of leaders to cache connections to, and send transactions to. The default in the solana client is 4.
 
 `NUM_LEADERS` - Number of leaders to send transactions to
 
-`IDENTITY_KEYPAIR_FILE` - Path to the keypair file. If this is a validator key it will use a staked connection to the validator.
+`IDENTITY_KEYPAIR_FILE` - Path to the keypair file. If this is a validator key it will use a staked connection to connect to leaders.
 
 `PORT` - Port to run the service on. Default is 4040.
 
