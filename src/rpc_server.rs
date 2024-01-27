@@ -53,6 +53,8 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         txn: String,
         params: RpcSendTransactionConfig,
     ) -> RpcResult<String> {
+        statsd_count!("send_transaction", 1);
+        validate_send_transaction_params(&params)?;
         let start = Instant::now();
         let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
         let binary_encoding = encoding.into_binary_encoding().ok_or_else(|| {
@@ -75,12 +77,28 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             versioned_transaction,
             sent_at: Instant::now(),
             sent_at_unix: SystemTime::now(),
+            retry_count: 0,
+            max_retries: params.max_retries,
         };
         self.txn_sender.send_transaction(transaction).await;
         statsd_time!("send_transaction_time", start.elapsed());
-        statsd_count!("send_transaction", 1);
         Ok(signature)
     }
+}
+
+fn validate_send_transaction_params(
+    params: &RpcSendTransactionConfig,
+) -> Result<(), ErrorObjectOwned> {
+    if !params.skip_preflight {
+        return Err(invalid_request("skip_preflight is not supported"));
+    }
+    if params.preflight_commitment.is_some() {
+        return Err(invalid_request("preflight_commitment is not supported"));
+    }
+    if params.min_context_slot.is_some() {
+        return Err(invalid_request("min_context_slot is not supported"));
+    }
+    Ok(())
 }
 
 fn param<T: FromStr>(param_str: &str, thing: &str) -> Result<T, ErrorObjectOwned> {

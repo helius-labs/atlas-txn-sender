@@ -5,7 +5,7 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::ComputeBudget;
-use solana_sdk::transaction::VersionedTransaction;
+use solana_sdk::transaction::{self, VersionedTransaction};
 use tokio::time::sleep;
 use tonic::async_trait;
 use tracing::{error, warn};
@@ -51,20 +51,36 @@ impl TxnSenderImpl {
         let connection_manager = self.connection_manager.clone();
         tokio::spawn(async move {
             loop {
-                let wire_transactions = Arc::new(transaction_store.get_wire_transactions());
-                let num_retries = wire_transactions.len();
+                let mut transactions_reached_max_retries = vec![];
+                let transcations = transaction_store.get_transactions();
+                let transaction_retry_queue_length = transcations.len();
+                let mut wire_transactions = vec![];
+                // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
+                for mut transaction_data in transcations.iter_mut() {
+                    if transaction_data.retry_count
+                        >= transaction_data.max_retries.unwrap_or(usize::MAX)
+                    {
+                        transactions_reached_max_retries
+                            .push(get_signature(&transaction_data).unwrap());
+                    } else {
+                        transaction_data.retry_count += 1;
+                        wire_transactions.push(transaction_data.wire_transaction.clone());
+                    }
+                }
+                // send wire transactions to leaders
+                let wire_transactions = Arc::new(wire_transactions).clone();
                 for leader in leader_tracker.get_leaders() {
                     if leader.tpu_quic.is_none() {
                         error!("leader {:?} has no tpu_quic", leader);
                         continue;
                     }
-                    let connection_manager = connection_manager.clone();
                     let wire_transactions = wire_transactions.clone();
+                    let connection_manager = connection_manager.clone();
                     tokio::spawn(async move {
                         for i in 0..3 {
                             let conn = connection_manager
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                            if let Err(e) = conn.send_data_batch(&wire_transactions).await {
+                            if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
                                 if i == 2 {
                                     error!(
                                         "Failed to send transaction batch to {:?}: {}",
@@ -82,7 +98,15 @@ impl TxnSenderImpl {
                         }
                     });
                 }
-                statsd_gauge!("transaction_retry_queue_length", num_retries as u64);
+                // remove transactions that reached max retries
+                for signature in transactions_reached_max_retries {
+                    statsd_count!("transactions_reached_max_retries", 1);
+                    transaction_store.remove_transaction(signature);
+                }
+                statsd_gauge!(
+                    "transaction_retry_queue_length",
+                    transaction_retry_queue_length as u64
+                );
                 sleep(Duration::from_secs(1)).await;
             }
         });
@@ -94,8 +118,10 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        self.transaction_store
-            .add_transaction(transaction_data.clone());
+        if transaction_data.max_retries.unwrap_or(1) > 0 {
+            self.transaction_store
+                .add_transaction(transaction_data.clone());
+        }
         let priority_fees = compute_priority_fee(&transaction_data.versioned_transaction)
             .map_or(false, |fee| fee > 0)
             .to_string();

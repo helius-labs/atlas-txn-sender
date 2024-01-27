@@ -15,13 +15,15 @@ pub struct TransactionData {
     pub versioned_transaction: VersionedTransaction,
     pub sent_at: Instant,
     pub sent_at_unix: SystemTime,
+    pub retry_count: usize,
+    pub max_retries: Option<usize>,
 }
 
 pub trait TransactionStore: Send + Sync {
     fn add_transaction(&self, transaction: TransactionData);
     fn get_signatures(&self) -> Vec<String>;
     fn remove_transaction(&self, signature: String);
-    fn get_wire_transactions(&self) -> Vec<Vec<u8>>;
+    fn get_transactions(&self) -> Arc<DashMap<String, TransactionData>>;
 }
 
 pub struct TransactionStoreImpl {
@@ -65,32 +67,8 @@ impl TransactionStore for TransactionStoreImpl {
         let _ = self.transactions.remove(&signature);
         statsd_time!("remove_signature_time", start.elapsed());
     }
-    fn get_wire_transactions<'a>(&self) -> Vec<Vec<u8>> {
-        let start = Instant::now();
-        let wire_transactions: Vec<Vec<u8>>;
-        let max_queue = 40000;
-        if self.transactions.len() < max_queue {
-            wire_transactions = self
-                .transactions
-                .iter()
-                .map(|t| t.value().wire_transaction.clone())
-                .collect();
-        } else {
-            // crude mechanism for now for speed to prevent host pain
-            wire_transactions = self
-                .transactions
-                .iter()
-                .filter(|v| v.sent_at.elapsed().as_secs() < 10)
-                .take(max_queue)
-                .map(|t| t.value().wire_transaction.clone())
-                .collect();
-            statsd_count!(
-                "transactions_dropped",
-                (self.transactions.len() - wire_transactions.len()) as i64
-            );
-        }
-        statsd_time!("get_wire_transactions_time", start.elapsed());
-        wire_transactions
+    fn get_transactions(&self) -> Arc<DashMap<String, TransactionData>> {
+        self.transactions.clone()
     }
 }
 
