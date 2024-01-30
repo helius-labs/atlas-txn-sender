@@ -26,4 +26,73 @@ The service has the following envs:
 
 ### Running
 
-set the above envs and install dependencies, then run `cargo run`
+set the above envs and install dependencies, then run `cargo run --release`. 
+
+## Systemd Setup
+
+And example systemd unit file for this service is below (filling in <rpc-url>, <grpc-url>, <x-token>, <path-to-repo>, <user>). Copy this into `/etc/systemd/system/atlas-txn-sender.service``
+
+```
+[Unit]
+Description=atlas-txn-sender
+After=network.target
+
+[Service]
+Environment=RPC_URL=<rpc-url>
+Environment=GRPC_URL=<grpc-url>
+Environment=X_TOKEN=<x-token>
+Environment=TPU_CONNECTION_POOL_SIZE=4
+Environment=NUM_LEADERS=8
+ExecStart=<path-to-repo>/atlas-txn-sender/target/release/atlas_txn_sender
+User=<user>
+Restart=on-failure
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then run 
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable atlas-txn-sender.service
+sudo systemctl restart atlas-txn-sender.service
+```
+
+### Setting up Datadog
+
+Update `/etc/datadog-agent/datadog.yaml` with (filling in <dd-api-key>)
+
+```
+site: us5.datadoghq.com
+
+
+api_key: <dd-api-key>
+
+dogstatsd_port: 7998
+logs_enabled: true
+tags:
+- staked:false
+- env:prod
+- service:atlas_txn_sender
+- network:mainnet
+- region:pitt
+use_dogstatsd: true
+```
+
+Update `/etc/datadog-agent/conf.d/journald.d/conf.yaml` with 
+
+```
+logs:
+    - type: journald
+      include_units:
+          - atlas-txn-sender.service
+```
+
+Then run 
+
+```
+sudo usermod -a -G systemd-journal dd-agent
+sudo systemctl restart datadog-agent
+```
