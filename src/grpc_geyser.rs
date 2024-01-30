@@ -180,7 +180,7 @@ impl<T: Interceptor + Send + Sync> SolanaRpc for GrpcGeyserImpl<T> {
             if let Some(block_time) = self.signature_cache.get(&signature) {
                 return Some(block_time.0.clone());
             }
-            sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(200)).await;
         }
         return None;
     }
