@@ -3,19 +3,24 @@ version: '3.8'
 services:
   atlas-txn-sender:
     platform: linux/amd64
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    
-    # image: atlas-txn-sender:local
-    # image: rust:1.76-buster
-    image: ubuntu:latest
-    user: "root"
-    group_add:
-      - '0'
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: atlas-txn-sender:local
+    user: "rustuser"
+    environment:
+      RPC_URL: 'https://api.devnet.solana.com'
+      GRPC_URL: 'https://api.devnet.rpcpool.com'
+      X_TOKEN: ''
+      TPU_CONNECTION_POOL_SIZE: 4
+      NUM_LEADERS: 10
+      IDENTITY_KEYPAIR_FILE: ''
+      PORT: 4040
 
     ports:
       - 4040:4040
+      - 7998:7998
     container_name: atlas-txn-sender
     working_dir: /app
     volumes:

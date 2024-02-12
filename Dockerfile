@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.4
 
 ARG RUST_VERSION=1.76.0
 ARG APP_NAME=atlas-txn-sender
@@ -13,7 +13,7 @@ RUN --mount=type=bind,source=src,target=src \
     <<EOF
 set -e
 cargo build --locked --release
-cp ./target/release/atlas-txn-sender /bin/atlas-txn-sender
+cp ./target/release/atlas_txn_sender /bin/atlas-txn-sender
 EOF
 
 FROM debian:bullseye-slim AS final

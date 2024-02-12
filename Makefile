@@ -1,6 +1,7 @@
 $(warning $(shell IMAGE_NAME=$(IMAGE_NAME) printenv | grep IMAGE_NAME))
 $(warning $(shell IMAGE_TAG=$(IMAGE_TAG) printenv | grep IMAGE_TAG))
 $(warning $(shell DOCKER_BUILD_ARGS=$(DOCKER_BUILD_ARGS) printenv | grep DOCKER_BUILD_ARGS))
+export DOCKER_BUILDKIT=1
 
 ifndef IMAGE_NAME
 #$(warning IMAGE_NAME is not set)
