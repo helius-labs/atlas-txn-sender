@@ -2,7 +2,7 @@
 
 ARG RUST_VERSION=1.76.0
 ARG APP_NAME=atlas-txn-sender
-FROM rust:${RUST_VERSION}-slim-bullseye AS build
+FROM rust:${RUST_VERSION}-slim-bookworm AS build
 WORKDIR /app
 RUN apt-get update && apt-get -y install libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang cmake make libprotobuf-dev protobuf-compiler
 RUN --mount=type=bind,source=src,target=src \
@@ -16,7 +16,7 @@ cargo build --locked --release
 cp ./target/release/atlas_txn_sender /bin/atlas-txn-sender
 EOF
 
-FROM debian:bullseye-slim AS final
+FROM debian:bookworm-slim AS final
 
 ARG UID=10001
 RUN adduser \
