@@ -54,9 +54,8 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         params: RpcSendTransactionConfig,
     ) -> RpcResult<String> {
         tracing::debug!("Received transaction: {}", txn);
-        tracing::debug!("Received params: {:?}", params);
         statsd_count!("send_transaction", 1);
-        // validate_send_transaction_params(&params)?;
+        validate_send_transaction_params(&params)?;
         let start = Instant::now();
         let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
         let binary_encoding = encoding.into_binary_encoding().ok_or_else(|| {
@@ -92,6 +91,7 @@ fn validate_send_transaction_params(
     params: &RpcSendTransactionConfig,
 ) -> Result<(), ErrorObjectOwned> {
     if !params.skip_preflight {
+        tracing::error!("Received params: {:?}", params);
         return Err(invalid_request("running preflight check is not supported"));
     }
     Ok(())

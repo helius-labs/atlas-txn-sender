@@ -5,7 +5,7 @@ from solathon import Client, Transaction, PublicKey, Keypair
 client = Client("https://api.mainnet-beta.solana.com")
 
 # Load sender's keypair
-sender = Keypair.from_private_key(<PRIV_KEY>)
+sender = Keypair.from_private_key()
 
 # Specify recipient's public key and amount to transfer (0.01 SOL)
 receiver = PublicKey("xjtCtLnxnAFUFAwLFvr4zery2JSbyWhGy4SZeDUeDXt")

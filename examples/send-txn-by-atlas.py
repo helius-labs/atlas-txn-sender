@@ -5,19 +5,19 @@ from solathon.core.instructions import transfer
 from solathon import Client, Transaction, PublicKey, Keypair
 
 
-url = "http://localhost:4040"
+url = "https://atlas-txn-sender-qqmv5cpcjq-an.a.run.app"
 headers = {"Content-Type": "application/json"}
 
 config = {
-    "skip_preflight": True,
-	"max_retries": 5
+    "skipPreflight": True,
+	"maxRetries": 5
 }
 
 
 
 client = Client("https://api.mainnet-beta.solana.com")
 recent_blockhash = client.get_recent_blockhash().blockhash
-sender = Keypair.from_private_key([<PRIV_KEY>])
+sender = Keypair.from_private_key(<PRIV_KEY>)
 
 # Specify recipient's public key and amount to transfer (0.01 SOL)
 receiver = PublicKey("xjtCtLnxnAFUFAwLFvr4zery2JSbyWhGy4SZeDUeDXt")
