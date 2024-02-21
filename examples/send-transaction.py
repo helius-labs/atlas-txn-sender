@@ -1,11 +1,14 @@
 from solathon.core.instructions import transfer
 from solathon import Client, Transaction, PublicKey, Keypair
+import json
 
 # Connect to Solana mainnet
 client = Client("https://api.mainnet-beta.solana.com")
 
 # Load sender's keypair
-sender = Keypair.from_private_key()
+with open('../account1.json', 'r') as f:
+    priv_key = json.load(f)
+    sender = Keypair.from_private_key(priv_key)
 
 # Specify recipient's public key and amount to transfer (0.01 SOL)
 receiver = PublicKey("xjtCtLnxnAFUFAwLFvr4zery2JSbyWhGy4SZeDUeDXt")

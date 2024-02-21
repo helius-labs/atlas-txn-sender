@@ -20,6 +20,16 @@ resource "google_cloud_run_service" "service" {
           protocol = "TCP"
           container_port = 4040
         }
+        resources {
+          limits = {
+            cpu = "2000m"
+            memory = "4Gi"
+          }
+          requests = {
+            cpu = "1000m"
+            memory = "1Gi"
+          }
+        }
         env{
           name = "RUST_BACKTRACE"
           value = 1
@@ -62,6 +72,7 @@ resource "google_cloud_run_service" "service" {
           mount_path = "/solana"
         }
       }
+
       volumes {
         name = "account-id"
         secret {
@@ -72,14 +83,16 @@ resource "google_cloud_run_service" "service" {
             path = "account.json"
           }
         }
+      }
     }
   }
-}
 
   metadata {
     annotations = {
       #    This sets the service to only allow all traffic
       "run.googleapis.com/ingress" = "all"
+      "autoscaling.knative.dev/maxScale" = 1
+      "run.googleapis.com/cpu-throttling" = false
     }
   }
 

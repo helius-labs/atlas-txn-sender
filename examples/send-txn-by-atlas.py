@@ -17,7 +17,10 @@ config = {
 
 client = Client("https://api.mainnet-beta.solana.com")
 recent_blockhash = client.get_recent_blockhash().blockhash
-sender = Keypair.from_private_key(<PRIV_KEY>)
+
+with open('../account1.json', 'r') as f:
+    priv_key = json.load(f)
+    sender = Keypair.from_private_key(priv_key)
 
 # Specify recipient's public key and amount to transfer (0.01 SOL)
 receiver = PublicKey("xjtCtLnxnAFUFAwLFvr4zery2JSbyWhGy4SZeDUeDXt")
@@ -46,8 +49,10 @@ data = {
     ],
     "id": 1
 }
-
+print('='*10)
+print('Sending transaction to %s.' % url)
 print(data)
+
 
 response = requests.post(url, data=json.dumps(data), headers=headers)
 print(response.json())
