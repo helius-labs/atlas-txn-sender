@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
 
-    image: atlas-txn-sender:local
+    image: atlas-txn-sender:d555451
     user: "rustuser"
     environment:
       RUST_BACKTRACE: 1

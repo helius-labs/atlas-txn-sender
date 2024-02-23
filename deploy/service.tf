@@ -1,7 +1,7 @@
 locals {
   #  Replace this to match your container image
   artifacts = {
-    image-url = "docker.io/kingjiyang/atlas-txn-sender:test"
+    image-url = "docker.io/kingjiyang/atlas-txn-sender:d555451-amd64"
   }
   service-name = "atlas-txn-sender"
 }
@@ -16,7 +16,7 @@ resource "google_cloud_run_service" "service" {
       containers {
         image = "${local.artifacts.image-url}"
         ports {
-          name = "h2c"
+          name = "http1"
           protocol = "TCP"
           container_port = 4040
         }
@@ -36,7 +36,7 @@ resource "google_cloud_run_service" "service" {
         }
         env {
           name = "RUST_LOG"
-          value = "DEBUG"
+          value = "ERROR"
         }
         env {
           name = "RPC_URL"
@@ -54,6 +54,35 @@ resource "google_cloud_run_service" "service" {
               key = "1" # version of the secret
             }
           }
+        }
+        env {
+          name = "DD_API_KEY"
+          value_from {
+            secret_key_ref {
+              name = "DD_API_KEY"
+              key = "1" # version of the secret
+            }
+          }
+        }
+        env {
+          name = "DD_SITE"
+          value = local.service-name
+        }
+        env {
+          name = "DD_SERVICE"
+          value = "datadog-atlas-txn-sender-run"
+        }
+        env {
+          name = "DD_ENV"
+          value = "datadog-atlas-txn-sender"
+        }
+        env {
+          name = "DD_VERSION"
+          value = "1"
+        }
+        env {
+          name = "DD_LOGS_ENABLED"
+          value = true
         }
         env {
           name = "TPU_CONNECTION_POOL_SIZE"

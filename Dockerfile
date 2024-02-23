@@ -35,5 +35,11 @@ COPY --from=build /bin/atlas-txn-sender /bin/
 # # Expose the port that the application listens on.
 EXPOSE 4040
 
+# https://docs.datadoghq.com/serverless/google_cloud_run/?code-lang=java#environment-variables
+COPY --from=datadog/serverless-init:1 /datadog-init /app/datadog-init
+ENTRYPOINT ["/app/datadog-init"]
+ENV DD_SERVICE=datadog-atlas-txn-sender
+ENV DD_ENV=atlas-txn-sender-test
+ENV DD_VERSION=1
 # What the container should run when it is started.
 CMD ["/bin/atlas-txn-sender"]
