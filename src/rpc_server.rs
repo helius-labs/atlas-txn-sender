@@ -80,7 +80,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             retry_count: 0,
             max_retries: params.max_retries,
         };
-        self.txn_sender.send_transaction(transaction).await;
+        self.txn_sender.send_transaction(transaction);
         statsd_time!("send_transaction_time", start.elapsed());
         Ok(signature)
     }
