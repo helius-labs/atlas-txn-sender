@@ -6,7 +6,10 @@ use solana_client::{
 };
 use solana_program_runtime::compute_budget::ComputeBudget;
 use solana_sdk::transaction::{self, VersionedTransaction};
-use tokio::time::sleep;
+use tokio::{
+    runtime::{Builder, Runtime},
+    time::sleep,
+};
 use tonic::async_trait;
 use tracing::{error, warn};
 
@@ -18,28 +21,36 @@ use crate::{
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
-    async fn send_transaction(&self, txn: TransactionData);
+    fn send_transaction(&self, txn: TransactionData);
 }
 
 pub struct TxnSenderImpl {
     leader_tracker: Arc<dyn LeaderTracker>,
     transaction_store: Arc<dyn TransactionStore>,
-    connection_manager: Arc<ConnectionCache>,
+    connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
+    txn_sender_runtime: Runtime,
 }
 
 impl TxnSenderImpl {
     pub fn new(
         leader_tracker: Arc<dyn LeaderTracker>,
         transaction_store: Arc<dyn TransactionStore>,
-        connection_manager: Arc<ConnectionCache>,
+        connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
+        txn_sender_threads: usize,
     ) -> Self {
+        let txn_sender_runtime = Builder::new_multi_thread()
+            .worker_threads(txn_sender_threads)
+            .enable_all()
+            .build()
+            .unwrap();
         let txn_sender = Self {
             leader_tracker,
             transaction_store,
-            connection_manager,
+            connection_cache,
             solana_rpc,
+            txn_sender_runtime,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -48,7 +59,7 @@ impl TxnSenderImpl {
     fn retry_transactions(&self) {
         let leader_tracker = self.leader_tracker.clone();
         let transaction_store = self.transaction_store.clone();
-        let connection_manager = self.connection_manager.clone();
+        let connection_cache = self.connection_cache.clone();
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -75,10 +86,10 @@ impl TxnSenderImpl {
                         continue;
                     }
                     let wire_transactions = wire_transactions.clone();
-                    let connection_manager = connection_manager.clone();
+                    let connection_cache = connection_cache.clone();
                     tokio::spawn(async move {
                         for i in 0..3 {
-                            let conn = connection_manager
+                            let conn = connection_cache
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
                             if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
                                 if i == 2 {
@@ -134,7 +145,7 @@ impl TxnSenderImpl {
             .to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
-        tokio::spawn(async move {
+        self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
             if let Some(confirmed_at) = confirmed_at {
@@ -160,42 +171,41 @@ pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
     let mut compute_budget = ComputeBudget::default();
     if let Err(e) = transaction.sanitize() {
         return None;
-    } else {
-        let instructions = transaction.message.instructions().iter().map(|ix| {
-            (
-                transaction
-                    .message
-                    .static_account_keys()
-                    .get(usize::from(ix.program_id_index))
-                    .expect("program id index is sanitized"),
-                ix,
-            )
-        });
-        let compute_budget = compute_budget.process_instructions(instructions, true, true);
-        match compute_budget {
-            Ok(compute_budget) => {
-                return Some(compute_budget.get_priority());
-            }
-            Err(e) => None,
+    }
+    let instructions = transaction.message.instructions().iter().map(|ix| {
+        (
+            transaction
+                .message
+                .static_account_keys()
+                .get(usize::from(ix.program_id_index))
+                .expect("program id index is sanitized"),
+            ix,
+        )
+    });
+    let compute_budget = compute_budget.process_instructions(instructions, true, true);
+    match compute_budget {
+        Ok(compute_budget) => {
+            return Some(compute_budget.get_priority());
         }
+        Err(e) => None,
     }
 }
 
 #[async_trait]
 impl TxnSender for TxnSenderImpl {
-    async fn send_transaction(&self, transaction_data: TransactionData) {
+    fn send_transaction(&self, transaction_data: TransactionData) {
         self.track_transaction(&transaction_data);
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
                 continue;
             }
-            let connection_manager = self.connection_manager.clone();
+            let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
-            tokio::spawn(async move {
+            self.txn_sender_runtime.spawn(async move {
                 for i in 0..3 {
                     let conn =
-                        connection_manager.get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                        connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                     if let Err(e) = conn.send_data(&wire_transaction).await {
                         if i == 2 {
                             error!("Failed to send transaction to {:?}: {}", leader, e);

@@ -5,8 +5,8 @@ mod rpc_server;
 mod solana_rpc;
 mod transaction_store;
 mod txn_sender;
-mod vendor;
 mod utils;
+mod vendor;
 
 use std::{
     env,
@@ -39,6 +39,7 @@ struct AtlasTxnSenderEnv {
     tpu_connection_pool_size: Option<usize>,
     x_token: Option<String>,
     num_leaders: Option<usize>,
+    txn_sender_threads: Option<usize>,
 }
 
 // Defualt on RPC is 4
@@ -112,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
         transaction_store,
         connection_cache,
         solana_rpc,
+        env.txn_sender_threads.unwrap_or(4),
     ));
     let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
     let handle = server.start(atlas_txn_sender.into_rpc());
