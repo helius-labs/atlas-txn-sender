@@ -29,7 +29,7 @@ pub struct TxnSenderImpl {
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
-    txn_sender_runtime: Runtime,
+    txn_sender_runtime: Arc<Runtime>,
 }
 
 impl TxnSenderImpl {
@@ -50,7 +50,7 @@ impl TxnSenderImpl {
             transaction_store,
             connection_cache,
             solana_rpc,
-            txn_sender_runtime,
+            txn_sender_runtime: Arc::new(txn_sender_runtime),
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -60,6 +60,7 @@ impl TxnSenderImpl {
         let leader_tracker = self.leader_tracker.clone();
         let transaction_store = self.transaction_store.clone();
         let connection_cache = self.connection_cache.clone();
+        let txn_sender_runtime = self.txn_sender_runtime.clone();
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -87,7 +88,7 @@ impl TxnSenderImpl {
                     }
                     let wire_transactions = wire_transactions.clone();
                     let connection_cache = connection_cache.clone();
-                    tokio::spawn(async move {
+                    txn_sender_runtime.spawn(async move {
                         for i in 0..3 {
                             let conn = connection_cache
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
