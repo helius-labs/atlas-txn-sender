@@ -11,6 +11,7 @@ use jsonrpsee::{
     proc_macros::rpc,
     types::{error::INVALID_PARAMS_CODE, ErrorObjectOwned},
 };
+use serde::Deserialize;
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
 use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
@@ -21,6 +22,13 @@ use crate::{
     vendor::solana_rpc::decode_and_deserialize,
 };
 
+// jsonrpsee does not make it easy to access http data,
+// so creating this optional param to pass in metadata
+#[derive(Deserialize)]
+pub struct RequestMetadata {
+    pub api_key: String,
+}
+
 #[rpc(server)]
 pub trait AtlasTxnSender {
     #[method(name = "health")]
@@ -30,6 +38,7 @@ pub trait AtlasTxnSender {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
+        metadata: Option<RequestMetadata>,
     ) -> RpcResult<String>;
 }
 
@@ -52,6 +61,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
+        metadata: Option<RequestMetadata>,
     ) -> RpcResult<String> {
         statsd_count!("send_transaction", 1);
         validate_send_transaction_params(&params)?;
@@ -81,7 +91,12 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             max_retries: params.max_retries,
         };
         self.txn_sender.send_transaction(transaction);
-        statsd_time!("send_transaction_time", start.elapsed());
+        let api_key = metadata.map(|m| m.api_key).unwrap_or("none".to_string());
+        statsd_time!(
+            "send_transaction_time",
+            start.elapsed(),
+            "api_key" => &api_key
+        );
         Ok(signature)
     }
 }
