@@ -5,7 +5,7 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::ComputeBudget;
-use solana_sdk::transaction::{self, VersionedTransaction};
+use solana_sdk::transaction::VersionedTransaction;
 use tokio::{
     runtime::{Builder, Runtime},
     time::sleep,
@@ -18,7 +18,11 @@ use crate::{
     rpc_server::RequestMetadata,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
+    utils::round_to_nearest_10000,
 };
+use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
+use solana_sdk::borsh0_10::try_from_slice_unchecked;
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
@@ -116,11 +120,11 @@ impl TxnSenderImpl {
                     statsd_count!("transactions_reached_max_retries", 1);
                     let transaction_data = transaction_store.remove_transaction(signature);
                     if let Some(transaction_data) = transaction_data {
-                        let priority_fees =
-                            compute_priority_fee(&transaction_data.versioned_transaction)
-                                .map_or(false, |fee| fee > 0)
-                                .to_string();
-                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
+                        let fee_and_cu =
+                            compute_fee_and_cu(&transaction_data.versioned_transaction);
+                        let priority_fees = (fee_and_cu.fee.unwrap_or(0) > 0).to_string();
+                        let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
+                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu);
                         statsd_gauge!(
                             "transaction_retry_queue_length",
                             transaction_retry_queue_length as u64
@@ -142,17 +146,17 @@ impl TxnSenderImpl {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }
-        let priority_fees = compute_priority_fee(&transaction_data.versioned_transaction)
-            .map_or(false, |fee| fee > 0)
-            .to_string();
+        let fee_and_cu = compute_fee_and_cu(&transaction_data.versioned_transaction);
+        let priority_fees = fee_and_cu.fee.map_or(false, |fee| fee > 0).to_string();
+        let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
             if let Some(confirmed_at) = confirmed_at {
-                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees);
-                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees);
+                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu);
+                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees, "compute_units" => &cu);
                 // This code doesn't behave as expected, it returns very low times and sometimes negative times, maybe the txns land extremely fast, but it seems fishy.
                 // match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
                 //     Ok(land_time) => {
@@ -163,18 +167,30 @@ impl TxnSenderImpl {
                 //     }
                 // }
             } else {
-                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
+                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu);
             }
         });
     }
 }
 
-pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
+pub struct FeeAndCu {
+    pub fee: Option<u64>,
+    pub cu: u32,
+}
+
+pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
+    let mut cu = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
     let mut compute_budget = ComputeBudget::default();
     if let Err(e) = transaction.sanitize() {
-        return None;
+        return FeeAndCu { fee: None, cu };
     }
     let instructions = transaction.message.instructions().iter().map(|ix| {
+        match try_from_slice_unchecked(&ix.data) {
+            Ok(ComputeBudgetInstruction::SetComputeUnitLimit(compute_unit_limit)) => {
+                cu = compute_unit_limit;
+            }
+            _ => {}
+        }
         (
             transaction
                 .message
@@ -187,9 +203,12 @@ pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
     let compute_budget = compute_budget.process_instructions(instructions, true, true);
     match compute_budget {
         Ok(compute_budget) => {
-            return Some(compute_budget.get_priority());
+            return FeeAndCu {
+                fee: Some(compute_budget.get_priority()),
+                cu,
+            };
         }
-        Err(e) => None,
+        Err(e) => FeeAndCu { fee: None, cu },
     }
 }
 
