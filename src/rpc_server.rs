@@ -25,6 +25,7 @@ use crate::{
 // jsonrpsee does not make it easy to access http data,
 // so creating this optional param to pass in metadata
 #[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 pub struct RequestMetadata {
     pub api_key: String,
 }
@@ -64,7 +65,11 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String> {
         let sent_at = Instant::now();
-        statsd_count!("send_transaction", 1);
+        let api_key = request_metadata
+            .clone()
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
+        statsd_count!("send_transaction", 1, "api_key" => &api_key);
         validate_send_transaction_params(&params)?;
         let start = Instant::now();
         let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
@@ -83,10 +88,6 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
                 }
             };
         let signature = versioned_transaction.signatures[0].to_string();
-        let api_key = request_metadata
-            .clone()
-            .map(|m| m.api_key)
-            .unwrap_or("none".to_string());
         let transaction = TransactionData {
             wire_transaction,
             versioned_transaction,
