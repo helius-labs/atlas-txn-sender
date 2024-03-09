@@ -24,7 +24,7 @@ use crate::{
 
 // jsonrpsee does not make it easy to access http data,
 // so creating this optional param to pass in metadata
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct RequestMetadata {
     pub api_key: String,
 }
@@ -83,18 +83,19 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
                 }
             };
         let signature = versioned_transaction.signatures[0].to_string();
+        let api_key = request_metadata
+            .clone()
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
         let transaction = TransactionData {
             wire_transaction,
             versioned_transaction,
             sent_at,
             retry_count: 0,
             max_retries: params.max_retries,
+            request_metadata,
         };
-        self.txn_sender
-            .send_transaction(transaction, request_metadata.clone());
-        let api_key = request_metadata
-            .map(|m| m.api_key)
-            .unwrap_or("none".to_string());
+        self.txn_sender.send_transaction(transaction);
         statsd_time!(
             "send_transaction_time",
             start.elapsed(),

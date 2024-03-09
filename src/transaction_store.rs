@@ -1,9 +1,6 @@
-use std::{
-    alloc::System,
-    sync::Arc,
-    time::{Instant, SystemTime},
-};
+use std::{sync::Arc, time::Instant};
 
+use crate::rpc_server::RequestMetadata;
 use cadence_macros::{statsd_count, statsd_time};
 use dashmap::DashMap;
 use solana_sdk::transaction::VersionedTransaction;
@@ -16,6 +13,8 @@ pub struct TransactionData {
     pub sent_at: Instant,
     pub retry_count: usize,
     pub max_retries: Option<usize>,
+    // might not be the best spot but is easy to add for what we need out of metrics now
+    pub request_metadata: Option<RequestMetadata>,
 }
 
 pub trait TransactionStore: Send + Sync {

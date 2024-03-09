@@ -1,11 +1,10 @@
-use std::{sync::Arc, time::Duration};
-
 use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::ComputeBudget;
 use solana_sdk::transaction::VersionedTransaction;
+use std::{sync::Arc, time::Duration};
 use tokio::{
     runtime::{Builder, Runtime},
     time::sleep,
@@ -15,7 +14,6 @@ use tracing::{error, warn};
 
 use crate::{
     leader_tracker::LeaderTracker,
-    rpc_server::RequestMetadata,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
     utils::round_to_nearest_10000,
@@ -26,7 +24,7 @@ use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
-    fn send_transaction(&self, txn: TransactionData, request_metadata: Option<RequestMetadata>);
+    fn send_transaction(&self, txn: TransactionData);
 }
 
 pub struct TxnSenderImpl {
@@ -124,7 +122,11 @@ impl TxnSenderImpl {
                             compute_fee_and_cu(&transaction_data.versioned_transaction);
                         let priority_fees = (fee_and_cu.fee.unwrap_or(0) > 0).to_string();
                         let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
-                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu);
+                        let api_key = transaction_data
+                            .request_metadata
+                            .map(|m| m.api_key)
+                            .unwrap_or("none".to_string());
+                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
                         statsd_gauge!(
                             "transaction_retry_queue_length",
                             transaction_retry_queue_length as u64
@@ -151,12 +153,17 @@ impl TxnSenderImpl {
         let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
+        let api_key = transaction_data
+            .request_metadata
+            .clone()
+            .map(|m| m.api_key.clone())
+            .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
             if let Some(confirmed_at) = confirmed_at {
-                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu);
-                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees, "compute_units" => &cu);
+                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
+                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
                 // This code doesn't behave as expected, it returns very low times and sometimes negative times, maybe the txns land extremely fast, but it seems fishy.
                 // match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
                 //     Ok(land_time) => {
@@ -167,7 +174,7 @@ impl TxnSenderImpl {
                 //     }
                 // }
             } else {
-                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu);
+                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
             }
         });
     }
@@ -214,13 +221,10 @@ pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
 
 #[async_trait]
 impl TxnSender for TxnSenderImpl {
-    fn send_transaction(
-        &self,
-        transaction_data: TransactionData,
-        request_metadata: Option<RequestMetadata>,
-    ) {
+    fn send_transaction(&self, transaction_data: TransactionData) {
         self.track_transaction(&transaction_data);
-        let api_key = request_metadata
+        let api_key = transaction_data
+            .request_metadata
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
         let mut leader_num = 0;
