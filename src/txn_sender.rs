@@ -15,13 +15,14 @@ use tracing::{error, warn};
 
 use crate::{
     leader_tracker::LeaderTracker,
+    rpc_server::RequestMetadata,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
 };
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
-    fn send_transaction(&self, txn: TransactionData);
+    fn send_transaction(&self, txn: TransactionData, request_metadata: Option<RequestMetadata>);
 }
 
 pub struct TxnSenderImpl {
@@ -194,8 +195,15 @@ pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
 
 #[async_trait]
 impl TxnSender for TxnSenderImpl {
-    fn send_transaction(&self, transaction_data: TransactionData) {
+    fn send_transaction(
+        &self,
+        transaction_data: TransactionData,
+        request_metadata: Option<RequestMetadata>,
+    ) {
         self.track_transaction(&transaction_data);
+        let api_key = request_metadata
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
         let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
@@ -204,22 +212,28 @@ impl TxnSender for TxnSenderImpl {
             }
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
+            let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
                 for i in 0..3 {
                     let conn =
                         connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                     if let Err(e) = conn.send_data(&wire_transaction).await {
                         if i == 2 {
-                            error!("Failed to send transaction to {:?}: {}", leader, e);
+                            error!(
+                                api_key = api_key,
+                                "Failed to send transaction to {:?}: {}", leader, e
+                            );
                         } else {
-                            warn!("Retrying to send transaction to {:?}: {}", leader, e);
+                            warn!(
+                                api_key = api_key,
+                                "Retrying to send transaction to {:?}: {}", leader, e
+                            );
                         }
                     } else {
                         let leader_num_str = &leader_num.to_string();
                         statsd_time!(
                             "transaction_received_by_leader",
-                            transaction_data.sent_at.elapsed()
-                        , "leader_num" => &leader_num_str);
+                            transaction_data.sent_at.elapsed(), "api_key" => &api_key, "leader_num" => &leader_num_str);
                         return;
                     }
                 }

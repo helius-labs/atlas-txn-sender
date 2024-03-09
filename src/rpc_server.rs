@@ -24,7 +24,7 @@ use crate::{
 
 // jsonrpsee does not make it easy to access http data,
 // so creating this optional param to pass in metadata
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct RequestMetadata {
     pub api_key: String,
 }
@@ -38,7 +38,7 @@ pub trait AtlasTxnSender {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        metadata: Option<RequestMetadata>,
+        request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String>;
 }
 
@@ -61,7 +61,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        metadata: Option<RequestMetadata>,
+        request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String> {
         let sent_at = Instant::now();
         statsd_count!("send_transaction", 1);
@@ -90,8 +90,11 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             retry_count: 0,
             max_retries: params.max_retries,
         };
-        self.txn_sender.send_transaction(transaction);
-        let api_key = metadata.map(|m| m.api_key).unwrap_or("none".to_string());
+        self.txn_sender
+            .send_transaction(transaction, request_metadata.clone());
+        let api_key = request_metadata
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
         statsd_time!(
             "send_transaction_time",
             start.elapsed(),
