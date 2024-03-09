@@ -196,6 +196,7 @@ pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
 impl TxnSender for TxnSenderImpl {
     fn send_transaction(&self, transaction_data: TransactionData) {
         self.track_transaction(&transaction_data);
+        let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
@@ -214,10 +215,16 @@ impl TxnSender for TxnSenderImpl {
                             warn!("Retrying to send transaction to {:?}: {}", leader, e);
                         }
                     } else {
+                        let leader_num_str = &leader_num.to_string();
+                        statsd_time!(
+                            "transaction_received_by_leader",
+                            transaction_data.sent_at.elapsed()
+                        , "leader_num" => &leader_num_str);
                         return;
                     }
                 }
             });
+            leader_num += 1;
         }
     }
 }

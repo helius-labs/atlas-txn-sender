@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     str::FromStr,
     sync::Arc,
-    time::{Instant, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use cadence_macros::{statsd_count, statsd_time};
@@ -63,6 +63,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         params: RpcSendTransactionConfig,
         metadata: Option<RequestMetadata>,
     ) -> RpcResult<String> {
+        let sent_at = Instant::now();
         statsd_count!("send_transaction", 1);
         validate_send_transaction_params(&params)?;
         let start = Instant::now();
@@ -85,8 +86,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         let transaction = TransactionData {
             wire_transaction,
             versioned_transaction,
-            sent_at: Instant::now(),
-            sent_at_unix: SystemTime::now(),
+            sent_at,
             retry_count: 0,
             max_retries: params.max_retries,
         };

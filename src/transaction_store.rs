@@ -14,7 +14,6 @@ pub struct TransactionData {
     pub wire_transaction: Vec<u8>,
     pub versioned_transaction: VersionedTransaction,
     pub sent_at: Instant,
-    pub sent_at_unix: SystemTime,
     pub retry_count: usize,
     pub max_retries: Option<usize>,
 }
