@@ -1,11 +1,10 @@
-use std::{sync::Arc, time::Duration};
-
 use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::ComputeBudget;
-use solana_sdk::transaction::{self, VersionedTransaction};
+use solana_sdk::transaction::VersionedTransaction;
+use std::{sync::Arc, time::Duration};
 use tokio::{
     runtime::{Builder, Runtime},
     time::sleep,
@@ -17,7 +16,11 @@ use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
+    utils::round_to_nearest_10000,
 };
+use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
+use solana_sdk::borsh0_10::try_from_slice_unchecked;
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
@@ -104,6 +107,7 @@ impl TxnSenderImpl {
                                         leader, e
                                     );
                                 }
+                                statsd_count!("transaction_send_error", 1);
                             } else {
                                 return;
                             }
@@ -115,11 +119,15 @@ impl TxnSenderImpl {
                     statsd_count!("transactions_reached_max_retries", 1);
                     let transaction_data = transaction_store.remove_transaction(signature);
                     if let Some(transaction_data) = transaction_data {
-                        let priority_fees =
-                            compute_priority_fee(&transaction_data.versioned_transaction)
-                                .map_or(false, |fee| fee > 0)
-                                .to_string();
-                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
+                        let fee_and_cu =
+                            compute_fee_and_cu(&transaction_data.versioned_transaction);
+                        let priority_fees = (fee_and_cu.fee.unwrap_or(0) > 0).to_string();
+                        let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
+                        let api_key = transaction_data
+                            .request_metadata
+                            .map(|m| m.api_key)
+                            .unwrap_or("none".to_string());
+                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
                         statsd_gauge!(
                             "transaction_retry_queue_length",
                             transaction_retry_queue_length as u64
@@ -141,17 +149,22 @@ impl TxnSenderImpl {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }
-        let priority_fees = compute_priority_fee(&transaction_data.versioned_transaction)
-            .map_or(false, |fee| fee > 0)
-            .to_string();
+        let fee_and_cu = compute_fee_and_cu(&transaction_data.versioned_transaction);
+        let priority_fees = fee_and_cu.fee.map_or(false, |fee| fee > 0).to_string();
+        let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
+        let api_key = transaction_data
+            .request_metadata
+            .clone()
+            .map(|m| m.api_key.clone())
+            .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
             if let Some(confirmed_at) = confirmed_at {
-                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees);
-                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees);
+                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
+                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
                 // This code doesn't behave as expected, it returns very low times and sometimes negative times, maybe the txns land extremely fast, but it seems fishy.
                 // match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
                 //     Ok(land_time) => {
@@ -162,18 +175,30 @@ impl TxnSenderImpl {
                 //     }
                 // }
             } else {
-                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees);
+                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
             }
         });
     }
 }
 
-pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
+pub struct FeeAndCu {
+    pub fee: Option<u64>,
+    pub cu: u32,
+}
+
+pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
+    let mut cu = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
     let mut compute_budget = ComputeBudget::default();
     if let Err(e) = transaction.sanitize() {
-        return None;
+        return FeeAndCu { fee: None, cu };
     }
     let instructions = transaction.message.instructions().iter().map(|ix| {
+        match try_from_slice_unchecked(&ix.data) {
+            Ok(ComputeBudgetInstruction::SetComputeUnitLimit(compute_unit_limit)) => {
+                cu = compute_unit_limit;
+            }
+            _ => {}
+        }
         (
             transaction
                 .message
@@ -186,9 +211,12 @@ pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
     let compute_budget = compute_budget.process_instructions(instructions, true, true);
     match compute_budget {
         Ok(compute_budget) => {
-            return Some(compute_budget.get_priority());
+            return FeeAndCu {
+                fee: Some(compute_budget.get_priority()),
+                cu,
+            };
         }
-        Err(e) => None,
+        Err(e) => FeeAndCu { fee: None, cu },
     }
 }
 
@@ -196,6 +224,11 @@ pub fn compute_priority_fee(transaction: &VersionedTransaction) -> Option<u64> {
 impl TxnSender for TxnSenderImpl {
     fn send_transaction(&self, transaction_data: TransactionData) {
         self.track_transaction(&transaction_data);
+        let api_key = transaction_data
+            .request_metadata
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
+        let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
@@ -203,21 +236,33 @@ impl TxnSender for TxnSenderImpl {
             }
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
+            let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
                 for i in 0..3 {
                     let conn =
                         connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                     if let Err(e) = conn.send_data(&wire_transaction).await {
                         if i == 2 {
-                            error!("Failed to send transaction to {:?}: {}", leader, e);
+                            error!(
+                                api_key = api_key,
+                                "Failed to send transaction to {:?}: {}", leader, e
+                            );
                         } else {
-                            warn!("Retrying to send transaction to {:?}: {}", leader, e);
+                            warn!(
+                                api_key = api_key,
+                                "Retrying to send transaction to {:?}: {}", leader, e
+                            );
                         }
                     } else {
+                        let leader_num_str = &leader_num.to_string();
+                        statsd_time!(
+                            "transaction_received_by_leader",
+                            transaction_data.sent_at.elapsed(), "api_key" => &api_key, "leader_num" => &leader_num_str);
                         return;
                     }
                 }
             });
+            leader_num += 1;
         }
     }
 }

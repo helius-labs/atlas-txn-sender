@@ -110,7 +110,6 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         }
                     }
                 }
-                error!("exiting loop");
             }
         });
     }
@@ -164,7 +163,6 @@ impl<T: Interceptor + Send + Sync + 'static> GrpcGeyserImpl<T> {
                         }
                     }
                 }
-                info!("gRPC stream disconnected, reconnecting in one second");
                 sleep(Duration::from_secs(1)).await;
             }
         });
