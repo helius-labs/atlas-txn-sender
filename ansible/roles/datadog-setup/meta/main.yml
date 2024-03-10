@@ -1,0 +1,5 @@
+---
+dependencies:
+  - role: datadog.datadog
+    become: yes
+    when: datadog|default(true)|bool == true

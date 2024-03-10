@@ -28,71 +28,31 @@ The service has the following envs:
 
 set the above envs and install dependencies, then run `cargo run --release`. 
 
-## Systemd Setup
+### Deploying service with ansible
 
-And example systemd unit file for this service is below (filling in <rpc-url>, <grpc-url>, <x-token>, <path-to-repo>, <user>). Copy this into `/etc/systemd/system/atlas-txn-sender.service``
+Deploying the service with ansible will setup a systemd service with haproxy so that you can access the service over port 80.
+It will also install datadog for metrics.
 
-```
-[Unit]
-Description=atlas-txn-sender
-After=network.target
-
-[Service]
-Environment=RPC_URL=<rpc-url>
-Environment=GRPC_URL=<grpc-url>
-Environment=X_TOKEN=<x-token>
-Environment=TPU_CONNECTION_POOL_SIZE=4
-Environment=NUM_LEADERS=8
-ExecStart=<path-to-repo>/atlas-txn-sender/target/release/atlas_txn_sender
-User=<user>
-Restart=on-failure
-LimitNOFILE=1000000
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then run 
+First you need to install the datadog role with the following command
 
 ```
-sudo systemctl daemon-reload
-sudo systemctl enable atlas-txn-sender.service
-sudo systemctl restart atlas-txn-sender.service
+ansible-galaxy install datadog.datadog
 ```
 
-### Setting up Datadog
+Then you need to update the file `ansible/inventory/hosts.yml` with the name/ip address/user of the server you want to deploy to.
 
-Update `/etc/datadog-agent/datadog.yaml` with (filling in <dd-api-key>)
-
-```
-site: us5.datadoghq.com
-
-
-api_key: <dd-api-key>
-
-dogstatsd_port: 7998
-logs_enabled: true
-tags:
-- staked:false
-- env:prod
-- service:atlas_txn_sender
-- network:mainnet
-- region:pitt
-use_dogstatsd: true
-```
-
-Update `/etc/datadog-agent/conf.d/journald.d/conf.yaml` with 
+Then you need to set these in the `ansible/deploy_atlas_txn_sender.yml` file
 
 ```
-logs:
-    - type: journald
-      include_units:
-          - atlas-txn-sender.service
+rpc_url
+grpc_url
+x_token
+datadog_api_key
+datadog_site
 ```
 
-Then run 
+Then you can run the following command to deploy the service
 
 ```
-sudo usermod -a -G systemd-journal dd-agent
-sudo systemctl restart datadog-agent
+ansible-playbook -i ansible/inventory/hosts.yml ansible/deploy_atlas_txn_sender.yml
 ```

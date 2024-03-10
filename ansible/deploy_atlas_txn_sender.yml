@@ -1,0 +1,35 @@
+- name: atlas-txn-sender setup
+  become: yes
+  hosts: all
+  vars:
+    user: ubuntu
+    service: atlas-txn-sender
+    rpc_url: <fill-in>
+    grpc_url: <fill-in>
+    x_token: <fill-in>
+    datadog_api_key: <fill-in>
+    datadog_site: <fill-in>
+    datadog_config:
+      dogstatsd_port: 7998
+      use_dogstatsd: true
+      logs_enabled: true
+      tags:
+        - "staked:{{staked|default('false')}}"
+        - "env:prod"
+        - "service:atlas_txn_sender"
+        - "network:mainnet"
+        - "region:{{region}}"
+        - "fleet_type:{{fleet_type|default('atlas')}}"
+  tasks:
+    - name: Execute datadog setup
+      include_role:
+       name: datadog-setup
+    - name: Install haproxy
+      include_role:
+       name: haproxy-setup   
+    - name: Install rust
+      include_role:
+       name: install-rust
+    - name: Execute atlas-txn-sender setup
+      include_role:
+       name: atlas-txn-sender

@@ -1,0 +1,17 @@
+[Unit]
+Description=atlas-txn-sender
+After=network.target
+
+[Service]
+Environment=RPC_URL={{rpc_url}}
+Environment=GRPC_URL={{grpc_url}}
+Environment=X_TOKEN={{x_token}}
+Environment=TPU_CONNECTION_POOL_SIZE=5
+Environment=NUM_LEADERS=5
+ExecStart=/home/ubuntu/atlas-txn-sender/target/release/atlas_txn_sender
+User=ubuntu
+Restart=on-failure
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target

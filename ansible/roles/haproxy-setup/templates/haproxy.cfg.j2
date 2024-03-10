@@ -1,0 +1,39 @@
+global
+    # Using nbthread because it simplifies metric aggregation.
+    # Using nbproc is not recommended in haproxy docs and is removed in recent versions
+    # See here that we can still map a thread to a core - https://www.haproxy.com/documentation/hapee/latest/management/multi-threading/
+    # So performance should still be very good
+    nbthread {{ ansible_processor_cores }}
+    cpu-map auto:1-{{ ansible_processor_cores }} 0-{{ ansible_processor_cores - 1 }}
+    # based on current production observations
+    maxconn {{ maxconn|default(10000) }}
+
+defaults
+    mode http
+    option http-server-close
+    option httpchk GET /health
+    http-check expect string ok
+
+    compression algo gzip
+    compression type application/json
+
+frontend atlas
+    bind *:80
+    default_backend atlas
+
+backend atlas
+    server rpc 127.0.0.1:4040 check
+
+# frontend to serve stats about the lb
+frontend stats
+    bind *:4444
+    stats enable
+    stats uri /stats
+    stats refresh 180s
+
+frontend prometheus
+    bind *:4445
+    http-request use-service prometheus-exporter if { path /metrics }
+    stats enable
+    stats uri /stats
+    stats refresh 10s

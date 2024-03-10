@@ -1,0 +1,5 @@
+---
+- name: Install deps
+  include_tasks: deps.yml
+- name: Install service
+  include_tasks: install_service.yml
