@@ -107,6 +107,7 @@ impl TxnSenderImpl {
                                         leader, e
                                     );
                                 }
+                                statsd_count!("transaction_send_error", 1);
                             } else {
                                 return;
                             }

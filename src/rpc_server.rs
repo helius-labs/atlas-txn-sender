@@ -69,7 +69,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             .clone()
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
-        statsd_count!("send_transaction", 1, );
+        statsd_count!("send_transaction", 1, "api_key" => &api_key);
         validate_send_transaction_params(&params)?;
         let start = Instant::now();
         let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
