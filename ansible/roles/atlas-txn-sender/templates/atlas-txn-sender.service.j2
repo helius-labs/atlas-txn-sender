@@ -3,9 +3,9 @@ Description=atlas-txn-sender
 After=network.target
 
 [Service]
-Environment=RPC_URL=https://mainnet.helius-rpc.com?api-key=1a24ae92-22d9-4d4c-9624-9bd1a8f8e120
-Environment=GRPC_URL={{grpc_url|default('https://grpc-mainnet.helius-rpc.com')}}
-Environment=X_TOKEN=4c3081a5-78cd-4433-af8b-f62ae6dc937c
+Environment=RPC_URL={{rpc_url}}
+Environment=GRPC_URL={{grpc_url}}
+Environment=X_TOKEN={{x_token}}
 Environment=TPU_CONNECTION_POOL_SIZE=5
 Environment=NUM_LEADERS=5
 ExecStart=/home/ubuntu/atlas-txn-sender/target/release/atlas_txn_sender

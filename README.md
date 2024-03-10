@@ -41,6 +41,8 @@ ansible-galaxy install datadog.datadog
 
 Then you need to update the file `ansible/inventory/hosts.yml` with the name/ip address/user of the server you want to deploy to.
 
+Then you need to get
+
 Then you can run the following command to deploy the service
 
 ```
