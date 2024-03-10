@@ -4,8 +4,11 @@
   vars:
     user: ubuntu
     service: atlas-txn-sender
-    datadog_api_key: <datadog-api-key>
-    datadog_site: <datadog-site>
+    rpc_url: <fill-in>
+    grpc_url: <fill-in>
+    x_token: <fill-in>
+    datadog_api_key: <fill-in>
+    datadog_site: <fill-in>
     datadog_config:
       dogstatsd_port: 7998
       use_dogstatsd: true

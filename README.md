@@ -41,7 +41,15 @@ ansible-galaxy install datadog.datadog
 
 Then you need to update the file `ansible/inventory/hosts.yml` with the name/ip address/user of the server you want to deploy to.
 
-Then you need to get
+Then you need to set these in the `ansible/deploy_atlas_txn_sender.yml` file
+
+```
+rpc_url
+grpc_url
+x_token
+datadog_api_key
+datadog_site
+```
 
 Then you can run the following command to deploy the service
 
