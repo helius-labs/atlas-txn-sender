@@ -39,7 +39,7 @@ pub trait AtlasTxnSender {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        request_metadata: Option<RequestMetadata>,
+        metadata: Option<RequestMetadata>,
     ) -> RpcResult<String>;
 }
 
@@ -62,10 +62,10 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        request_metadata: Option<RequestMetadata>,
+        metadata: Option<RequestMetadata>,
     ) -> RpcResult<String> {
         let sent_at = Instant::now();
-        let api_key = request_metadata
+        let api_key = metadata
             .clone()
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
@@ -94,7 +94,7 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             sent_at,
             retry_count: 0,
             max_retries: params.max_retries,
-            request_metadata,
+            request_metadata: metadata,
         };
         self.txn_sender.send_transaction(transaction);
         statsd_time!(
