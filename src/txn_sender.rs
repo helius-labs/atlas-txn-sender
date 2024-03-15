@@ -145,7 +145,7 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        if transaction_data.max_retries.unwrap_or(60) > 0 {
+        if transaction_data.max_retries.unwrap_or(50) > 0 {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }
