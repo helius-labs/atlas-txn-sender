@@ -16,7 +16,7 @@ use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
-    utils::round_to_nearest_10000,
+    utils::round_to_nearest_million,
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
@@ -122,7 +122,7 @@ impl TxnSenderImpl {
                         let fee_and_cu =
                             compute_fee_and_cu(&transaction_data.versioned_transaction);
                         let priority_fees = (fee_and_cu.fee.unwrap_or(0) > 0).to_string();
-                        let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
+                        let cu = round_to_nearest_million(fee_and_cu.cu).to_string();
                         let api_key = transaction_data
                             .request_metadata
                             .map(|m| m.api_key)
@@ -145,13 +145,13 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        if transaction_data.max_retries.unwrap_or(1) > 0 {
+        if transaction_data.max_retries.unwrap_or(50) > 0 {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }
         let fee_and_cu = compute_fee_and_cu(&transaction_data.versioned_transaction);
         let priority_fees = fee_and_cu.fee.map_or(false, |fee| fee > 0).to_string();
-        let cu = round_to_nearest_10000(fee_and_cu.cu).to_string();
+        let cu = round_to_nearest_million(fee_and_cu.cu).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         let api_key = transaction_data
