@@ -223,7 +223,7 @@ pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
 #[async_trait]
 impl TxnSender for TxnSenderImpl {
     fn send_transaction(&self, transaction_data: TransactionData) {
-        self.track_transaction(&transaction_data);
+        // self.track_transaction(&transaction_data);
         let api_key = transaction_data
             .request_metadata
             .map(|m| m.api_key)
