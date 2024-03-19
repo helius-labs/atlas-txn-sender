@@ -45,11 +45,15 @@ pub trait AtlasTxnSender {
 
 pub struct AtlasTxnSenderImpl {
     txn_sender: Arc<dyn TxnSender>,
+    max_txn_send_retries: usize,
 }
 
 impl AtlasTxnSenderImpl {
-    pub fn new(txn_sender: Arc<dyn TxnSender>) -> Self {
-        Self { txn_sender }
+    pub fn new(txn_sender: Arc<dyn TxnSender>, max_txn_send_retries: usize) -> Self {
+        Self {
+            txn_sender,
+            max_txn_send_retries,
+        }
     }
 }
 
@@ -93,7 +97,10 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             versioned_transaction,
             sent_at,
             retry_count: 0,
-            max_retries: params.max_retries,
+            max_retries: std::cmp::min(
+                self.max_txn_send_retries,
+                params.max_retries.unwrap_or(self.max_txn_send_retries),
+            ),
             request_metadata,
         };
         self.txn_sender.send_transaction(transaction);

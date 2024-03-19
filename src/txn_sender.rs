@@ -33,7 +33,6 @@ pub struct TxnSenderImpl {
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
     txn_sender_runtime: Arc<Runtime>,
-    default_max_retries: Option<usize>,
 }
 
 impl TxnSenderImpl {
@@ -43,7 +42,6 @@ impl TxnSenderImpl {
         connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
         txn_sender_threads: usize,
-        default_max_retries: Option<usize>,
     ) -> Self {
         let txn_sender_runtime = Builder::new_multi_thread()
             .worker_threads(txn_sender_threads)
@@ -56,7 +54,6 @@ impl TxnSenderImpl {
             connection_cache,
             solana_rpc,
             txn_sender_runtime: Arc::new(txn_sender_runtime),
-            default_max_retries,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -75,9 +72,7 @@ impl TxnSenderImpl {
                 let mut wire_transactions = vec![];
                 // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
                 for mut transaction_data in transcations.iter_mut() {
-                    if transaction_data.retry_count
-                        >= transaction_data.max_retries.unwrap_or(usize::MAX)
-                    {
+                    if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
                             .push(get_signature(&transaction_data).unwrap());
                     } else {
@@ -148,7 +143,7 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        if transaction_data.max_retries.unwrap_or(50) > 0 {
+        if transaction_data.max_retries > 0 {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }

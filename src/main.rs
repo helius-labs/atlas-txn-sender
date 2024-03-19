@@ -40,7 +40,7 @@ struct AtlasTxnSenderEnv {
     x_token: Option<String>,
     num_leaders: Option<usize>,
     txn_sender_threads: Option<usize>,
-    default_max_retries: Option<usize>,
+    max_txn_send_retries: Option<usize>,
 }
 
 // Defualt on RPC is 4
@@ -121,7 +121,7 @@ async fn main() -> anyhow::Result<()> {
         connection_cache,
         solana_rpc,
         env.txn_sender_threads.unwrap_or(4),
-        env.default_max_retries,
+        env.max_txn_send_retries,
     ));
     let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender);
     let handle = server.start(atlas_txn_sender.into_rpc());
