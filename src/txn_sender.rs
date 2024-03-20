@@ -33,6 +33,7 @@ pub struct TxnSenderImpl {
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
     txn_sender_runtime: Arc<Runtime>,
+    txn_send_retry_interval_seconds: usize,
 }
 
 impl TxnSenderImpl {
@@ -42,6 +43,7 @@ impl TxnSenderImpl {
         connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
         txn_sender_threads: usize,
+        txn_send_retry_interval_seconds: usize,
     ) -> Self {
         let txn_sender_runtime = Builder::new_multi_thread()
             .worker_threads(txn_sender_threads)
@@ -54,6 +56,7 @@ impl TxnSenderImpl {
             connection_cache,
             solana_rpc,
             txn_sender_runtime: Arc::new(txn_sender_runtime),
+            txn_send_retry_interval_seconds,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -64,6 +67,7 @@ impl TxnSenderImpl {
         let transaction_store = self.transaction_store.clone();
         let connection_cache = self.connection_cache.clone();
         let txn_sender_runtime = self.txn_sender_runtime.clone();
+        let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds.clone();
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -72,9 +76,7 @@ impl TxnSenderImpl {
                 let mut wire_transactions = vec![];
                 // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
                 for mut transaction_data in transcations.iter_mut() {
-                    if transaction_data.retry_count
-                        >= transaction_data.max_retries.unwrap_or(usize::MAX)
-                    {
+                    if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
                             .push(get_signature(&transaction_data).unwrap());
                     } else {
@@ -134,7 +136,7 @@ impl TxnSenderImpl {
                         );
                     }
                 }
-                sleep(Duration::from_secs(1)).await;
+                sleep(Duration::from_secs(txn_send_retry_interval_seconds as u64)).await;
             }
         });
     }
@@ -145,7 +147,7 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        if transaction_data.max_retries.unwrap_or(50) > 0 {
+        if transaction_data.max_retries > 0 {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }

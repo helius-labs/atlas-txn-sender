@@ -12,7 +12,7 @@ pub struct TransactionData {
     pub versioned_transaction: VersionedTransaction,
     pub sent_at: Instant,
     pub retry_count: usize,
-    pub max_retries: Option<usize>,
+    pub max_retries: usize,
     // might not be the best spot but is easy to add for what we need out of metrics now
     pub request_metadata: Option<RequestMetadata>,
 }
