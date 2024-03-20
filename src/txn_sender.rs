@@ -67,6 +67,7 @@ impl TxnSenderImpl {
         let transaction_store = self.transaction_store.clone();
         let connection_cache = self.connection_cache.clone();
         let txn_sender_runtime = self.txn_sender_runtime.clone();
+        let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds.clone();
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -135,7 +136,7 @@ impl TxnSenderImpl {
                         );
                     }
                 }
-                sleep(Duration::from_secs(self.txn_send_retry_interval_seconds)).await;
+                sleep(Duration::from_secs(txn_send_retry_interval_seconds as u64)).await;
             }
         });
     }
