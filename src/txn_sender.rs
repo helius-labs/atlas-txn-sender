@@ -33,6 +33,7 @@ pub struct TxnSenderImpl {
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
     txn_sender_runtime: Arc<Runtime>,
+    txn_send_retry_interval_seconds: usize,
 }
 
 impl TxnSenderImpl {
@@ -42,6 +43,7 @@ impl TxnSenderImpl {
         connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
         txn_sender_threads: usize,
+        txn_send_retry_interval_seconds: usize,
     ) -> Self {
         let txn_sender_runtime = Builder::new_multi_thread()
             .worker_threads(txn_sender_threads)
@@ -54,6 +56,7 @@ impl TxnSenderImpl {
             connection_cache,
             solana_rpc,
             txn_sender_runtime: Arc::new(txn_sender_runtime),
+            txn_send_retry_interval_seconds,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -132,7 +135,7 @@ impl TxnSenderImpl {
                         );
                     }
                 }
-                sleep(Duration::from_secs(1)).await;
+                sleep(Duration::from_secs(self.txn_send_retry_interval_seconds)).await;
             }
         });
     }
