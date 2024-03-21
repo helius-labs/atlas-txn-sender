@@ -16,6 +16,8 @@ The service has the following envs:
 
 `NUM_LEADERS` - Number of leaders to send transactions to
 
+`LEADER_OFFSET` - Offset of the leader schedule. Default is 0. 
+
 `IDENTITY_KEYPAIR_FILE` - Path to the keypair file. If this is a validator key it will use a staked connection to connect to leaders.
 
 `PORT` - Port to run the service on. Default is 4040.

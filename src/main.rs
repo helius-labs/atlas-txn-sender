@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
     let transaction_store = Arc::new(TransactionStoreImpl::new());
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(client));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
-    let num_leaders = env.num_leaders.unwrap_or(4);
+    let num_leaders = env.num_leaders.unwrap_or(2);
     let leader_tracker = Arc::new(LeaderTrackerImpl::new(
         rpc_client,
         solana_rpc.clone(),
