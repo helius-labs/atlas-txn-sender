@@ -39,7 +39,7 @@ struct AtlasTxnSenderEnv {
     tpu_connection_pool_size: Option<usize>,
     x_token: Option<String>,
     num_leaders: Option<usize>,
-    leader_offset: Option<usize>,
+    leader_offset: Option<i64>,
     txn_sender_threads: Option<usize>,
     max_txn_send_retries: Option<usize>,
     txn_send_retry_interval: Option<usize>,

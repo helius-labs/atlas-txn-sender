@@ -13,7 +13,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_rpc_client_api::response::RpcContactInfo;
 use solana_sdk::slot_history::Slot;
 use tokio::time::sleep;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::{errors::AtlasTxnSenderError, solana_rpc::SolanaRpc};
 
@@ -39,7 +39,7 @@ impl LeaderTrackerImpl {
         rpc_client: Arc<RpcClient>,
         solana_rpc: Arc<dyn SolanaRpc>,
         num_leaders: usize,
-        leader_offset: usize,
+        leader_offset: i64,
     ) -> Self {
         let leader_tracker = Self {
             rpc_client,
@@ -47,7 +47,7 @@ impl LeaderTrackerImpl {
             cur_slot: Arc::new(AtomicU64::new(0)),
             cur_leaders: Arc::new(DashMap::new()),
             num_leaders,
-            leader_offset: leader_offset as i64,
+            leader_offset,
         };
         leader_tracker.poll_slot();
         leader_tracker.poll_slot_leaders();
@@ -58,12 +58,14 @@ impl LeaderTrackerImpl {
     fn poll_slot(&self) {
         let solana_rpc = self.solana_rpc.clone();
         let cur_slot = self.cur_slot.clone();
+        let leader_offset = self.leader_offset;
         tokio::spawn(async move {
             loop {
                 let next_slot = solana_rpc.get_next_slot();
-                if let Some(next_slot) = next_slot {
-                    if next_slot > cur_slot.load(Ordering::Relaxed) {
-                        cur_slot.store(next_slot, Ordering::Relaxed);
+                let start_slot = next_slot.map(|s| _get_start_slot(s, leader_offset));
+                if let Some(start_slot) = start_slot {
+                    if start_slot > cur_slot.load(Ordering::Relaxed) {
+                        cur_slot.store(start_slot, Ordering::Relaxed);
                     }
                 }
             }
@@ -72,12 +74,6 @@ impl LeaderTrackerImpl {
 
     /// poll_slot_leaders polls every minute for the next 1000 slot leaders and populates the cur_leaders map with the slot and ContactInfo of each leader
     fn poll_slot_leaders(&self) {
-        let start_slot = self.rpc_client.get_slot();
-        if let Err(e) = start_slot {
-            panic!("Error getting current slot: {}", e);
-        }
-        let start_slot = start_slot.unwrap();
-        self.cur_slot.store(start_slot, Ordering::Relaxed);
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
@@ -97,8 +93,7 @@ impl LeaderTrackerImpl {
         let next_slot = self.cur_slot.load(Ordering::Relaxed);
         debug!("Polling slot leaders for slot {}", next_slot);
         // polling 1000 slots ahead is more than enough
-        let start_slot = self._get_start_slot(next_slot);
-        let slot_leaders = self.rpc_client.get_slot_leaders(start_slot, 1000);
+        let slot_leaders = self.rpc_client.get_slot_leaders(next_slot, 1000);
         if let Err(e) = slot_leaders {
             return Err(format!("Error getting slot leaders: {}", e).into());
         }
@@ -137,24 +132,22 @@ impl LeaderTrackerImpl {
             self.cur_leaders.remove(&slot);
         }
     }
+}
 
-    fn _get_start_slot(&self, next_slot: u64) -> u64 {
-        let slot_buffer = self.leader_offset * (NUM_LEADERS_PER_SLOT as i64);
-        let start_slot = if slot_buffer > 0 {
-            next_slot + slot_buffer as u64
-        } else {
-            next_slot - slot_buffer.abs() as u64
-        };
-        start_slot
-    }
+fn _get_start_slot(next_slot: u64, leader_offset: i64) -> u64 {
+    let slot_buffer = leader_offset * (NUM_LEADERS_PER_SLOT as i64);
+    let start_slot = if slot_buffer > 0 {
+        next_slot + slot_buffer as u64
+    } else {
+        next_slot - slot_buffer.abs() as u64
+    };
+    start_slot
 }
 
 impl LeaderTracker for LeaderTrackerImpl {
     fn get_leaders(&self) -> Vec<RpcContactInfo> {
-        let cur_slot = self.cur_slot.load(Ordering::Relaxed);
-        let start_slot = self._get_start_slot(cur_slot);
-        let end_slot = cur_slot + (self.num_leaders * NUM_LEADERS_PER_SLOT) as u64;
-
+        let start_slot = self.cur_slot.load(Ordering::Relaxed);
+        let end_slot = start_slot + (self.num_leaders * NUM_LEADERS_PER_SLOT) as u64;
         let mut leaders = IndexMap::new();
         for slot in start_slot..end_slot {
             let leader = self.cur_leaders.get(&slot);
@@ -165,6 +158,7 @@ impl LeaderTracker for LeaderTrackerImpl {
                 break;
             }
         }
+        info!("leaders: {:?}, start_slot: {:?}", leaders.clone().keys(), start_slot);
         leaders.values().clone().into_iter().map(|v| v.to_owned()).collect()
     }
 }
