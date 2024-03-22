@@ -192,7 +192,7 @@ pub struct PriorityDetails {
 
 pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityDetails {
     let mut cu_limit = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
-    let mut compute_budget = ComputeBudget::default();
+    let mut compute_budget = ComputeBudget::new(DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT as u64);
     if let Err(e) = transaction.sanitize() {
         return PriorityDetails {
             fee: 0,
