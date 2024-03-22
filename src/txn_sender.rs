@@ -2,10 +2,7 @@ use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
-use solana_program_runtime::{
-    compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT},
-    prioritization_fee::PrioritizationFeeDetails,
-};
+use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
 use solana_sdk::transaction::VersionedTransaction;
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -18,15 +15,14 @@ use tracing::{error, warn};
 use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
-    transaction_store::{self, get_signature, TransactionData, TransactionStore},
-    utils::round_to_nearest_million,
+    transaction_store::{get_signature, TransactionData, TransactionStore},
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
-const RETRY_COUNT_BINS: &Vec<i32> = &vec![0, 1, 2, 5, 10, 25];
-const MAX_RETRIES_BINS: &Vec<i32> = &vec![0, 1, 5, 10, 30];
+const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
+const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
@@ -140,11 +136,11 @@ impl TxnSenderImpl {
                         let priority_fees_enabled = (fee > 0).to_string();
                         let retries_tag = bin_counter_to_tag(
                             Some(transaction_data.retry_count as i32),
-                            RETRY_COUNT_BINS,
+                            &RETRY_COUNT_BINS.to_vec(),
                         );
                         let max_retries_tag = bin_counter_to_tag(
                             Some(transaction_data.max_retries as i32),
-                            MAX_RETRIES_BINS,
+                            &MAX_RETRIES_BINS.to_vec(),
                         );
 
                         // Collect metrics
@@ -193,8 +189,8 @@ impl TxnSenderImpl {
                 .get(&signature)
                 .map(|t| (Some(t.retry_count as i32), Some(t.max_retries as i32)))
                 .unwrap_or((None, None));
-            let retries_tag = bin_counter_to_tag(retries, RETRY_COUNT_BINS);
-            let max_retries_tag = bin_counter_to_tag(max_retries, MAX_RETRIES_BINS);
+            let retries_tag = bin_counter_to_tag(retries, &RETRY_COUNT_BINS.to_vec());
+            let max_retries_tag = bin_counter_to_tag(max_retries, &MAX_RETRIES_BINS.to_vec());
 
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
