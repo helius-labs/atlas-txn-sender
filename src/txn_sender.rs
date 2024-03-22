@@ -10,7 +10,7 @@ use tokio::{
     time::sleep,
 };
 use tonic::async_trait;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     leader_tracker::LeaderTracker,
@@ -184,6 +184,14 @@ impl TxnSenderImpl {
             .map(|m| m.api_key.clone())
             .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
+            match transaction_store.get_transactions().get(&signature){
+                Some(_) => {
+                    info!("Found txn!")
+                },
+                None => {
+                    error!("Transaction {} not found!", signature)
+                }
+            }
             let (retries, max_retries) = transaction_store
                 .get_transactions()
                 .get(&signature)
