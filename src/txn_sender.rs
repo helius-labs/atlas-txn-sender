@@ -2,7 +2,7 @@ use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
-use solana_program_runtime::compute_budget::ComputeBudget;
+use solana_program_runtime::{compute_budget::ComputeBudget, prioritization_fee::PrioritizationFeeDetails};
 use solana_sdk::transaction::VersionedTransaction;
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -121,15 +121,19 @@ impl TxnSenderImpl {
                     statsd_count!("transactions_reached_max_retries", 1);
                     let transaction_data = transaction_store.remove_transaction(signature);
                     if let Some(transaction_data) = transaction_data {
-                        let fee_and_cu =
-                            compute_fee_and_cu(&transaction_data.versioned_transaction);
-                        let priority_fees = (fee_and_cu.fee.unwrap_or(0) > 0).to_string();
-                        let cu = round_to_nearest_million(fee_and_cu.cu).to_string();
+                        let landed = "false";
+                        let PriorityDetails { fee, cu_limit, priority }  = compute_priority_details(&transaction_data.versioned_transaction);
                         let api_key = transaction_data
                             .request_metadata
                             .map(|m| m.api_key)
                             .unwrap_or("none".to_string());
-                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
+                        let priority_fees_enabled = (fee > 0).to_string();
+
+                        // Collect metrics
+                        statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                        statsd_gauge!("transaction_priority_fee", priority, "landed" => &landed);
+                        statsd_gauge!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
+                        statsd_gauge!("transaction_fees", fee, "landed" => &landed);
                         statsd_gauge!(
                             "transaction_retry_queue_length",
                             transaction_retry_queue_length as u64
@@ -151,9 +155,8 @@ impl TxnSenderImpl {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }
-        let fee_and_cu = compute_fee_and_cu(&transaction_data.versioned_transaction);
-        let priority_fees = fee_and_cu.fee.map_or(false, |fee| fee > 0).to_string();
-        let cu = round_to_nearest_million(fee_and_cu.cu).to_string();
+        let PriorityDetails { fee, cu_limit, priority }  = compute_priority_details(&transaction_data.versioned_transaction);
+        let priority_fees_enabled = (fee > 0).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         let api_key = transaction_data
@@ -164,40 +167,43 @@ impl TxnSenderImpl {
         self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
-            if let Some(confirmed_at) = confirmed_at {
-                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-                // This code doesn't behave as expected, it returns very low times and sometimes negative times, maybe the txns land extremely fast, but it seems fishy.
-                // match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
-                //     Ok(land_time) => {
-                //         statsd_time!("transaction_land_time", land_time.as_secs() as u64);
-                //     }
-                //     Err(e) => {
-                //         error!("Error computing land time: {}", e);
-                //     }
-                // }
+
+            // Collect metrics
+            let landed = if let Some(confirmed_at) = confirmed_at {
+                statsd_count!("transactions_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                statsd_time!("transaction_land_time", sent_at.elapsed(), "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                "true"
             } else {
-                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-            }
+                statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                "false"
+            };
+            statsd_gauge!("transaction_priority", priority, "landed" => &landed);
+            statsd_gauge!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
+            statsd_gauge!("transaction_priority_fee", fee, "landed" => &landed);
         });
     }
 }
 
-pub struct FeeAndCu {
-    pub fee: Option<u64>,
-    pub cu: u32,
+pub struct PriorityDetails {
+    pub fee: u64,
+    pub cu_limit: u32,
+    pub priority: u64,
 }
 
-pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
-    let mut cu = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
+pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityDetails {
+    let mut cu_limit = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
     let mut compute_budget = ComputeBudget::default();
     if let Err(e) = transaction.sanitize() {
-        return FeeAndCu { fee: None, cu };
+        return PriorityDetails {
+            fee: 0,
+            priority: 0,
+            cu_limit,
+        };
     }
     let instructions = transaction.message.instructions().iter().map(|ix| {
         match try_from_slice_unchecked(&ix.data) {
             Ok(ComputeBudgetInstruction::SetComputeUnitLimit(compute_unit_limit)) => {
-                cu = compute_unit_limit;
+                cu_limit = compute_unit_limit;
             }
             _ => {}
         }
@@ -212,13 +218,16 @@ pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
     });
     let compute_budget = compute_budget.process_instructions(instructions, true, true);
     match compute_budget {
-        Ok(compute_budget) => {
-            return FeeAndCu {
-                fee: Some(compute_budget.get_priority()),
-                cu,
-            };
-        }
-        Err(e) => FeeAndCu { fee: None, cu },
+        Ok(compute_budget) => PriorityDetails {
+            fee: compute_budget.get_fee(),
+            priority: compute_budget.get_priority(),
+            cu_limit,
+        },
+        Err(e) => PriorityDetails {
+            fee: 0,
+            priority: 0,
+            cu_limit,
+        },
     }
 }
 
