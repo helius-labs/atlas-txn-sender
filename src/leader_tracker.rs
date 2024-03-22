@@ -31,7 +31,7 @@ pub struct LeaderTrackerImpl {
     cur_slot: Arc<AtomicU64>,
     cur_leaders: Arc<DashMap<Slot, RpcContactInfo>>,
     num_leaders: usize,
-    leader_buffer: i64,
+    leader_offset: i64,
 }
 
 impl LeaderTrackerImpl {
@@ -39,6 +39,7 @@ impl LeaderTrackerImpl {
         rpc_client: Arc<RpcClient>,
         solana_rpc: Arc<dyn SolanaRpc>,
         num_leaders: usize,
+        leader_offset: usize,
     ) -> Self {
         let leader_tracker = Self {
             rpc_client,
@@ -46,7 +47,7 @@ impl LeaderTrackerImpl {
             cur_slot: Arc::new(AtomicU64::new(0)),
             cur_leaders: Arc::new(DashMap::new()),
             num_leaders,
-            leader_buffer: 0,
+            leader_offset: leader_offset as i64,
         };
         leader_tracker.poll_slot();
         leader_tracker.poll_slot_leaders();
@@ -138,7 +139,7 @@ impl LeaderTrackerImpl {
     }
 
     fn _get_start_slot(&self, next_slot: u64) -> u64 {
-        let slot_buffer = self.leader_buffer * (NUM_LEADERS_PER_SLOT as i64);
+        let slot_buffer = self.leader_offset * (NUM_LEADERS_PER_SLOT as i64);
         let start_slot = if slot_buffer > 0 {
             next_slot + slot_buffer as u64
         } else {
