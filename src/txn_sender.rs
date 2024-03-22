@@ -2,7 +2,10 @@ use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
-use solana_program_runtime::{compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT}, prioritization_fee::PrioritizationFeeDetails};
+use solana_program_runtime::{
+    compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT},
+    prioritization_fee::PrioritizationFeeDetails,
+};
 use solana_sdk::transaction::VersionedTransaction;
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -15,7 +18,7 @@ use tracing::{error, warn};
 use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
-    transaction_store::{get_signature, TransactionData, TransactionStore},
+    transaction_store::{self, get_signature, TransactionData, TransactionStore},
     utils::round_to_nearest_million,
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
@@ -122,7 +125,11 @@ impl TxnSenderImpl {
                     let transaction_data = transaction_store.remove_transaction(signature);
                     if let Some(transaction_data) = transaction_data {
                         let landed = "false";
-                        let PriorityDetails { fee, cu_limit, priority }  = compute_priority_details(&transaction_data.versioned_transaction);
+                        let PriorityDetails {
+                            fee,
+                            cu_limit,
+                            priority,
+                        } = compute_priority_details(&transaction_data.versioned_transaction);
                         let api_key = transaction_data
                             .request_metadata
                             .map(|m| m.api_key)
@@ -155,7 +162,11 @@ impl TxnSenderImpl {
             self.transaction_store
                 .add_transaction(transaction_data.clone());
         }
-        let PriorityDetails { fee, cu_limit, priority }  = compute_priority_details(&transaction_data.versioned_transaction);
+        let PriorityDetails {
+            fee,
+            cu_limit,
+            priority,
+        } = compute_priority_details(&transaction_data.versioned_transaction);
         let priority_fees_enabled = (fee > 0).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
@@ -165,16 +176,28 @@ impl TxnSenderImpl {
             .map(|m| m.api_key.clone())
             .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
+            let (retries, max_retries) = transaction_store
+                .get_transactions()
+                .get(&signature)
+                .map(|t| (Some(t.retry_count as i32), Some(t.max_retries as i32)))
+                .unwrap_or((None, None));
+            let retries_tag = bin_counter_to_tag(retries, &vec![0, 1, 2, 5, 10, 25]);
+            let max_retries_tag = bin_counter_to_tag(max_retries, &vec![0, 1, 5, 10, ]);
+
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
 
             // Collect metrics
+            // We separate the retry metrics to reduce the cardinality with API key and price.
             let landed = if let Some(confirmed_at) = confirmed_at {
-                statsd_count!("transactions_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                statsd_count!("transactions_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+                statsd_count!("transactions_landed_by_key", 1, "api_key" => &api_key);
                 statsd_time!("transaction_land_time", sent_at.elapsed(), "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
                 "true"
             } else {
-                statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                statsd_count!("transactions_not_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+                statsd_count!("transactions_not_landed_by_key", 1, "api_key" => &api_key);
+                statsd_count!("transactions_not_landed_retries", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
                 "false"
             };
             statsd_time!("transaction_priority", priority, "landed" => &landed);
@@ -276,4 +299,37 @@ impl TxnSender for TxnSenderImpl {
             leader_num += 1;
         }
     }
+}
+
+fn bin_counter_to_tag(counter: Option<i32>, bins: &Vec<i32>) -> String {
+    if counter.is_none() {
+        return "none".to_string();
+    }
+    let counter = counter.unwrap();
+
+    // Iterate through the bins vector to find the appropriate bin
+    let mut bin_start = "-inf".to_string();
+    let mut bin_end = "inf".to_string();
+    for bin in bins.iter().rev() {
+        if counter >= *bin {
+            bin_start = bin.to_string();
+            break;
+        }
+
+        bin_end = bin.to_string();
+    }
+    format!("[{},{})", bin_start, bin_end)
+}
+
+#[test]
+fn test_bin_counter() {
+    let bins = vec![0, 1, 2, 5, 10, 25];
+    assert_eq!(bin_counter_to_tag(None, &bins), "none");
+    assert_eq!(bin_counter_to_tag(Some(-100), &bins), "[-inf,0)");
+    assert_eq!(bin_counter_to_tag(Some(0), &bins), "[0,1)");
+    assert_eq!(bin_counter_to_tag(Some(1), &bins), "[1,2)");
+    assert_eq!(bin_counter_to_tag(Some(2), &bins), "[2,5)");
+    assert_eq!(bin_counter_to_tag(Some(3), &bins), "[2,5)");
+    assert_eq!(bin_counter_to_tag(Some(17), &bins), "[10,25)");
+    assert_eq!(bin_counter_to_tag(Some(34), &bins), "[25,inf)");
 }
