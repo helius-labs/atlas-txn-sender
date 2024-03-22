@@ -25,6 +25,9 @@ use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIM
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
+const RETRY_COUNT_BINS: &Vec<i32> = &vec![0, 1, 2, 5, 10, 25];
+const MAX_RETRIES_BINS: &Vec<i32> = &vec![0, 1, 5, 10, 30];
+
 #[async_trait]
 pub trait TxnSender: Send + Sync {
     fn send_transaction(&self, txn: TransactionData);
@@ -135,9 +138,18 @@ impl TxnSenderImpl {
                             .map(|m| m.api_key)
                             .unwrap_or("none".to_string());
                         let priority_fees_enabled = (fee > 0).to_string();
+                        let retries_tag = bin_counter_to_tag(
+                            Some(transaction_data.retry_count as i32),
+                            RETRY_COUNT_BINS,
+                        );
+                        let max_retries_tag = bin_counter_to_tag(
+                            Some(transaction_data.max_retries as i32),
+                            MAX_RETRIES_BINS,
+                        );
 
                         // Collect metrics
-                        statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                        statsd_count!("transactions_not_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+                        statsd_count!("transactions_not_landed_by_key", 1, "api_key" => &api_key);
                         statsd_time!("transaction_priority", priority, "landed" => &landed);
                         statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
                         statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
@@ -181,8 +193,8 @@ impl TxnSenderImpl {
                 .get(&signature)
                 .map(|t| (Some(t.retry_count as i32), Some(t.max_retries as i32)))
                 .unwrap_or((None, None));
-            let retries_tag = bin_counter_to_tag(retries, &vec![0, 1, 2, 5, 10, 25]);
-            let max_retries_tag = bin_counter_to_tag(max_retries, &vec![0, 1, 5, 10, ]);
+            let retries_tag = bin_counter_to_tag(retries, RETRY_COUNT_BINS);
+            let max_retries_tag = bin_counter_to_tag(max_retries, MAX_RETRIES_BINS);
 
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
