@@ -165,7 +165,6 @@ impl LeaderTracker for LeaderTrackerImpl {
                 break;
             }
         }
-        println!("{:?}", leaders.keys());
         leaders.values().clone().into_iter().map(|v| v.to_owned()).collect()
     }
 }

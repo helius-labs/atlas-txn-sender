@@ -131,9 +131,9 @@ impl TxnSenderImpl {
 
                         // Collect metrics
                         statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
-                        statsd_gauge!("transaction_priority_fee", priority, "landed" => &landed);
-                        statsd_gauge!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
-                        statsd_gauge!("transaction_fees", fee, "landed" => &landed);
+                        statsd_time!("transaction_priority_fee", priority, "landed" => &landed);
+                        statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
+                        statsd_time!("transaction_fees", fee, "landed" => &landed);
                         statsd_gauge!(
                             "transaction_retry_queue_length",
                             transaction_retry_queue_length as u64
@@ -177,9 +177,9 @@ impl TxnSenderImpl {
                 statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
                 "false"
             };
-            statsd_gauge!("transaction_priority", priority, "landed" => &landed);
-            statsd_gauge!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
-            statsd_gauge!("transaction_priority_fee", fee, "landed" => &landed);
+            statsd_time!("transaction_priority", priority, "landed" => &landed);
+            statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
+            statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
         });
     }
 }
