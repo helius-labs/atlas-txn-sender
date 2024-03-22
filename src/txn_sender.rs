@@ -2,7 +2,7 @@ use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
-use solana_program_runtime::{compute_budget::ComputeBudget, prioritization_fee::PrioritizationFeeDetails};
+use solana_program_runtime::{compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT}, prioritization_fee::PrioritizationFeeDetails};
 use solana_sdk::transaction::VersionedTransaction;
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -131,9 +131,9 @@ impl TxnSenderImpl {
 
                         // Collect metrics
                         statsd_count!("transactions_not_landed", 1, "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
-                        statsd_time!("transaction_priority_fee", priority, "landed" => &landed);
+                        statsd_time!("transaction_priority", priority, "landed" => &landed);
+                        statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
                         statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
-                        statsd_time!("transaction_fees", fee, "landed" => &landed);
                         statsd_gauge!(
                             "transaction_retry_queue_length",
                             transaction_retry_queue_length as u64
@@ -178,8 +178,8 @@ impl TxnSenderImpl {
                 "false"
             };
             statsd_time!("transaction_priority", priority, "landed" => &landed);
-            statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
             statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
+            statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
         });
     }
 }
@@ -203,7 +203,7 @@ pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityD
     let instructions = transaction.message.instructions().iter().map(|ix| {
         match try_from_slice_unchecked(&ix.data) {
             Ok(ComputeBudgetInstruction::SetComputeUnitLimit(compute_unit_limit)) => {
-                cu_limit = compute_unit_limit;
+                cu_limit = compute_unit_limit.min(MAX_COMPUTE_UNIT_LIMIT);
             }
             _ => {}
         }
