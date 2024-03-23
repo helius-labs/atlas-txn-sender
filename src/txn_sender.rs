@@ -74,9 +74,10 @@ impl TxnSenderImpl {
             loop {
                 let mut transactions_reached_max_retries = vec![];
                 let transcations = transaction_store.get_transactions();
-                let transaction_retry_queue_length = transcations.len();
-                let mut wire_transactions = vec![];
+                statsd_gauge!("transaction_retry_queue_length", transcations.len() as u64);
+
                 // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
+                let mut wire_transactions = vec![];
                 for mut transaction_data in transcations.iter_mut() {
                     if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
@@ -120,40 +121,8 @@ impl TxnSenderImpl {
                 }
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
+                    let _ = transaction_store.remove_transaction(signature);
                     statsd_count!("transactions_reached_max_retries", 1);
-                    let transaction_data = transaction_store.remove_transaction(signature);
-                    if let Some(transaction_data) = transaction_data {
-                        let landed = "false";
-                        let PriorityDetails {
-                            fee,
-                            cu_limit,
-                            priority,
-                        } = compute_priority_details(&transaction_data.versioned_transaction);
-                        let api_key = transaction_data
-                            .request_metadata
-                            .map(|m| m.api_key)
-                            .unwrap_or("none".to_string());
-                        let priority_fees_enabled = (fee > 0).to_string();
-                        let retries_tag = bin_counter_to_tag(
-                            Some(transaction_data.retry_count as i32),
-                            &RETRY_COUNT_BINS.to_vec(),
-                        );
-                        let max_retries_tag = bin_counter_to_tag(
-                            Some(transaction_data.max_retries as i32),
-                            &MAX_RETRIES_BINS.to_vec(),
-                        );
-
-                        // Collect metrics
-                        statsd_count!("transactions_not_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
-                        statsd_count!("transactions_not_landed_by_key", 1, "api_key" => &api_key);
-                        statsd_time!("transaction_priority", priority, "landed" => &landed);
-                        statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
-                        statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
-                        statsd_gauge!(
-                            "transaction_retry_queue_length",
-                            transaction_retry_queue_length as u64
-                        );
-                    }
                 }
                 sleep(Duration::from_secs(txn_send_retry_interval_seconds as u64)).await;
             }
@@ -166,10 +135,8 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        if transaction_data.max_retries > 0 {
-            self.transaction_store
-                .add_transaction(transaction_data.clone());
-        }
+        self.transaction_store
+            .add_transaction(transaction_data.clone());
         let PriorityDetails {
             fee,
             cu_limit,
@@ -198,7 +165,7 @@ impl TxnSenderImpl {
                 .map(|t| (Some(t.retry_count as i32), Some(t.max_retries as i32)))
                 .unwrap_or((None, None));
             let retries_tag = bin_counter_to_tag(retries, &RETRY_COUNT_BINS.to_vec());
-            let max_retries_tag = bin_counter_to_tag(max_retries, &MAX_RETRIES_BINS.to_vec());
+            let max_retries_tag: String = bin_counter_to_tag(max_retries, &MAX_RETRIES_BINS.to_vec());
 
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
