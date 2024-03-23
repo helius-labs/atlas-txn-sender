@@ -301,18 +301,18 @@ fn bin_counter_to_tag(counter: Option<i32>, bins: &Vec<i32>) -> String {
 
         bin_end = bin.to_string();
     }
-    format!("[{},{})", bin_start, bin_end)
+    format!("{}_{}", bin_start, bin_end)
 }
 
 #[test]
 fn test_bin_counter() {
     let bins = vec![0, 1, 2, 5, 10, 25];
     assert_eq!(bin_counter_to_tag(None, &bins), "none");
-    assert_eq!(bin_counter_to_tag(Some(-100), &bins), "[-inf,0)");
-    assert_eq!(bin_counter_to_tag(Some(0), &bins), "[0,1)");
-    assert_eq!(bin_counter_to_tag(Some(1), &bins), "[1,2)");
-    assert_eq!(bin_counter_to_tag(Some(2), &bins), "[2,5)");
-    assert_eq!(bin_counter_to_tag(Some(3), &bins), "[2,5)");
-    assert_eq!(bin_counter_to_tag(Some(17), &bins), "[10,25)");
-    assert_eq!(bin_counter_to_tag(Some(34), &bins), "[25,inf)");
+    assert_eq!(bin_counter_to_tag(Some(-100), &bins), "-inf_0");
+    assert_eq!(bin_counter_to_tag(Some(0), &bins), "0_1");
+    assert_eq!(bin_counter_to_tag(Some(1), &bins), "1_2");
+    assert_eq!(bin_counter_to_tag(Some(2), &bins), "2_5");
+    assert_eq!(bin_counter_to_tag(Some(3), &bins), "2_5");
+    assert_eq!(bin_counter_to_tag(Some(17), &bins), "10_25");
+    assert_eq!(bin_counter_to_tag(Some(34), &bins), "25_inf");
 }
