@@ -39,6 +39,7 @@ struct AtlasTxnSenderEnv {
     tpu_connection_pool_size: Option<usize>,
     x_token: Option<String>,
     num_leaders: Option<usize>,
+    leader_offset: Option<i64>,
     txn_sender_threads: Option<usize>,
     max_txn_send_retries: Option<usize>,
     txn_send_retry_interval: Option<usize>,
@@ -110,11 +111,13 @@ async fn main() -> anyhow::Result<()> {
     let transaction_store = Arc::new(TransactionStoreImpl::new());
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(client));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
-    let num_leaders = env.num_leaders.unwrap_or(4);
+    let num_leaders = env.num_leaders.unwrap_or(2);
+    let leader_offset = env.leader_offset.unwrap_or(0);
     let leader_tracker = Arc::new(LeaderTrackerImpl::new(
         rpc_client,
         solana_rpc.clone(),
         num_leaders,
+        leader_offset,
     ));
     let txn_send_retry_interval_seconds = env.txn_send_retry_interval.unwrap_or(2);
     let txn_sender = Arc::new(TxnSenderImpl::new(

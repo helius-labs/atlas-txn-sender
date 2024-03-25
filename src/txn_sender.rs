@@ -2,7 +2,7 @@ use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
 use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
-use solana_program_runtime::compute_budget::ComputeBudget;
+use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
 use solana_sdk::transaction::VersionedTransaction;
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -10,17 +10,19 @@ use tokio::{
     time::sleep,
 };
 use tonic::async_trait;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
-    utils::round_to_nearest_million,
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
+
+const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
+const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
@@ -72,9 +74,10 @@ impl TxnSenderImpl {
             loop {
                 let mut transactions_reached_max_retries = vec![];
                 let transcations = transaction_store.get_transactions();
-                let transaction_retry_queue_length = transcations.len();
-                let mut wire_transactions = vec![];
+                statsd_gauge!("transaction_retry_queue_length", transcations.len() as u64);
+
                 // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
+                let mut wire_transactions = vec![];
                 for mut transaction_data in transcations.iter_mut() {
                     if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
@@ -118,23 +121,8 @@ impl TxnSenderImpl {
                 }
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
+                    let _ = transaction_store.remove_transaction(signature);
                     statsd_count!("transactions_reached_max_retries", 1);
-                    let transaction_data = transaction_store.remove_transaction(signature);
-                    if let Some(transaction_data) = transaction_data {
-                        let fee_and_cu =
-                            compute_fee_and_cu(&transaction_data.versioned_transaction);
-                        let priority_fees = (fee_and_cu.fee.unwrap_or(0) > 0).to_string();
-                        let cu = round_to_nearest_million(fee_and_cu.cu).to_string();
-                        let api_key = transaction_data
-                            .request_metadata
-                            .map(|m| m.api_key)
-                            .unwrap_or("none".to_string());
-                        statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-                        statsd_gauge!(
-                            "transaction_retry_queue_length",
-                            transaction_retry_queue_length as u64
-                        );
-                    }
                 }
                 sleep(Duration::from_secs(txn_send_retry_interval_seconds as u64)).await;
             }
@@ -147,13 +135,14 @@ impl TxnSenderImpl {
             return;
         }
         let signature = signature.unwrap();
-        if transaction_data.max_retries > 0 {
-            self.transaction_store
-                .add_transaction(transaction_data.clone());
-        }
-        let fee_and_cu = compute_fee_and_cu(&transaction_data.versioned_transaction);
-        let priority_fees = fee_and_cu.fee.map_or(false, |fee| fee > 0).to_string();
-        let cu = round_to_nearest_million(fee_and_cu.cu).to_string();
+        self.transaction_store
+            .add_transaction(transaction_data.clone());
+        let PriorityDetails {
+            fee,
+            cu_limit,
+            priority,
+        } = compute_priority_details(&transaction_data.versioned_transaction);
+        let priority_fees_enabled = (fee > 0).to_string();
         let solana_rpc = self.solana_rpc.clone();
         let transaction_store = self.transaction_store.clone();
         let api_key = transaction_data
@@ -162,42 +151,57 @@ impl TxnSenderImpl {
             .map(|m| m.api_key.clone())
             .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
+            let (retries, max_retries) = transaction_store
+                .get_transactions()
+                .get(&signature)
+                .map(|t| (Some(t.retry_count as i32), Some(t.max_retries as i32)))
+                .unwrap_or((None, None));
+            let retries_tag = bin_counter_to_tag(retries, &RETRY_COUNT_BINS.to_vec());
+            let max_retries_tag: String = bin_counter_to_tag(max_retries, &MAX_RETRIES_BINS.to_vec());
+
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
             transaction_store.remove_transaction(signature);
-            if let Some(confirmed_at) = confirmed_at {
-                statsd_count!("transactions_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-                statsd_time!("transaction_land_time", sent_at.elapsed(), "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-                // This code doesn't behave as expected, it returns very low times and sometimes negative times, maybe the txns land extremely fast, but it seems fishy.
-                // match unix_to_time(confirmed_at).duration_since(sent_at_unix) {
-                //     Ok(land_time) => {
-                //         statsd_time!("transaction_land_time", land_time.as_secs() as u64);
-                //     }
-                //     Err(e) => {
-                //         error!("Error computing land time: {}", e);
-                //     }
-                // }
+
+            // Collect metrics
+            // We separate the retry metrics to reduce the cardinality with API key and price.
+            let landed = if let Some(confirmed_at) = confirmed_at {
+                statsd_count!("transactions_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+                statsd_count!("transactions_landed_by_key", 1, "api_key" => &api_key);
+                statsd_time!("transaction_land_time", sent_at.elapsed(), "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
+                "true"
             } else {
-                statsd_count!("transactions_not_landed", 1, "priority_fees" => &priority_fees, "compute_units" => &cu, "api_key" => &api_key);
-            }
+                statsd_count!("transactions_not_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+                statsd_count!("transactions_not_landed_by_key", 1, "api_key" => &api_key);
+                statsd_count!("transactions_not_landed_retries", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+                "false"
+            };
+            statsd_time!("transaction_priority", priority, "landed" => &landed);
+            statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
+            statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
         });
     }
 }
 
-pub struct FeeAndCu {
-    pub fee: Option<u64>,
-    pub cu: u32,
+pub struct PriorityDetails {
+    pub fee: u64,
+    pub cu_limit: u32,
+    pub priority: u64,
 }
 
-pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
-    let mut cu = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
-    let mut compute_budget = ComputeBudget::default();
+pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityDetails {
+    let mut cu_limit = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
+    let mut compute_budget = ComputeBudget::new(DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT as u64);
     if let Err(e) = transaction.sanitize() {
-        return FeeAndCu { fee: None, cu };
+        return PriorityDetails {
+            fee: 0,
+            priority: 0,
+            cu_limit,
+        };
     }
     let instructions = transaction.message.instructions().iter().map(|ix| {
         match try_from_slice_unchecked(&ix.data) {
             Ok(ComputeBudgetInstruction::SetComputeUnitLimit(compute_unit_limit)) => {
-                cu = compute_unit_limit;
+                cu_limit = compute_unit_limit.min(MAX_COMPUTE_UNIT_LIMIT);
             }
             _ => {}
         }
@@ -212,13 +216,16 @@ pub fn compute_fee_and_cu(transaction: &VersionedTransaction) -> FeeAndCu {
     });
     let compute_budget = compute_budget.process_instructions(instructions, true, true);
     match compute_budget {
-        Ok(compute_budget) => {
-            return FeeAndCu {
-                fee: Some(compute_budget.get_priority()),
-                cu,
-            };
-        }
-        Err(e) => FeeAndCu { fee: None, cu },
+        Ok(compute_budget) => PriorityDetails {
+            fee: compute_budget.get_fee(),
+            priority: compute_budget.get_priority(),
+            cu_limit,
+        },
+        Err(e) => PriorityDetails {
+            fee: 0,
+            priority: 0,
+            cu_limit,
+        },
     }
 }
 
@@ -267,4 +274,37 @@ impl TxnSender for TxnSenderImpl {
             leader_num += 1;
         }
     }
+}
+
+fn bin_counter_to_tag(counter: Option<i32>, bins: &Vec<i32>) -> String {
+    if counter.is_none() {
+        return "none".to_string();
+    }
+    let counter = counter.unwrap();
+
+    // Iterate through the bins vector to find the appropriate bin
+    let mut bin_start = "-inf".to_string();
+    let mut bin_end = "inf".to_string();
+    for bin in bins.iter().rev() {
+        if counter >= *bin {
+            bin_start = bin.to_string();
+            break;
+        }
+
+        bin_end = bin.to_string();
+    }
+    format!("{}_{}", bin_start, bin_end)
+}
+
+#[test]
+fn test_bin_counter() {
+    let bins = vec![0, 1, 2, 5, 10, 25];
+    assert_eq!(bin_counter_to_tag(None, &bins), "none");
+    assert_eq!(bin_counter_to_tag(Some(-100), &bins), "-inf_0");
+    assert_eq!(bin_counter_to_tag(Some(0), &bins), "0_1");
+    assert_eq!(bin_counter_to_tag(Some(1), &bins), "1_2");
+    assert_eq!(bin_counter_to_tag(Some(2), &bins), "2_5");
+    assert_eq!(bin_counter_to_tag(Some(3), &bins), "2_5");
+    assert_eq!(bin_counter_to_tag(Some(17), &bins), "10_25");
+    assert_eq!(bin_counter_to_tag(Some(34), &bins), "25_inf");
 }
