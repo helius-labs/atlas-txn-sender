@@ -4,7 +4,10 @@ use solana_client::{
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
 use solana_sdk::transaction::VersionedTransaction;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::{
     runtime::{Builder, Runtime},
     time::sleep,
@@ -248,8 +251,10 @@ impl TxnSender for TxnSenderImpl {
             let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
                 for i in 0..3 {
+                    let mut start = Instant::now();
                     let conn =
                         connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                    let acquire_connection_time = start.elapsed().as_millis();
                     if let Err(e) = conn.send_data(&wire_transaction).await {
                         if i == 2 {
                             error!(
@@ -267,7 +272,7 @@ impl TxnSender for TxnSenderImpl {
                         statsd_time!(
                             "transaction_received_by_leader",
                             transaction_data.sent_at.elapsed(), "api_key" => &api_key, "leader_num" => &leader_num_str);
-                        info!(duration = &transaction_data.sent_at.elapsed().as_millis(), "Transaction sent to leader");
+                        info!(duration = &transaction_data.sent_at.elapsed().as_millis(), acquire_connection_time = &acquire_connection_time, "Transaction sent to leader");
                         return;
                     }
                 }
