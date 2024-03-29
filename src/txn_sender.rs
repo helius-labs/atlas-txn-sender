@@ -79,19 +79,6 @@ impl TxnSenderImpl {
                 let transactions = transaction_store.get_transactions();
                 statsd_gauge!("transaction_retry_queue_length", transactions.len() as u64);
 
-                // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
-                // let mut wire_transactions = vec![];
-                // for mut transaction_data in transactions.iter_mut() {
-                //     if transaction_data.retry_count >= transaction_data.max_retries {
-                //         transactions_reached_max_retries
-                //             .push(get_signature(&transaction_data).unwrap());
-                //     } else {
-                //         transaction_data.retry_count += 1;
-                //         wire_transactions.push(transaction_data.wire_transaction.clone());
-                //     }
-                // }
-                // send wire transactions to leaders
-                // let wire_transactions = Arc::new(wire_transactions).clone();
                 for mut transaction_data in transactions.iter_mut() {
                     if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
