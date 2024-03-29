@@ -267,6 +267,7 @@ impl TxnSender for TxnSenderImpl {
                         statsd_time!(
                             "transaction_received_by_leader",
                             transaction_data.sent_at.elapsed(), "api_key" => &api_key, "leader_num" => &leader_num_str);
+                        info!(duration = &transaction_data.sent_at.elapsed().as_millis(), "Transaction sent to leader");
                         return;
                     }
                 }
