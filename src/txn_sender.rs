@@ -245,6 +245,7 @@ impl TxnSender for TxnSenderImpl {
             .request_metadata
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
+        let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
