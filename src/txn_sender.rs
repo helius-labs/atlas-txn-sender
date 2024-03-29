@@ -99,6 +99,7 @@ impl TxnSenderImpl {
                     }
                     let wire_transactions = wire_transactions.clone();
                     let connection_cache = connection_cache.clone();
+                    let sent_at = Instant::now();
                     txn_sender_runtime.spawn(async move {
                         for i in 0..3 {
                             let conn = connection_cache
@@ -117,6 +118,9 @@ impl TxnSenderImpl {
                                 }
                                 statsd_count!("transaction_send_error", 1);
                             } else {
+                                statsd_time!(
+                                    "transaction_received_by_leader",
+                                    sent_at.elapsed(), "api_key" => "not_applicable", "batch" => "true");
                                 return;
                             }
                         }
@@ -268,10 +272,9 @@ impl TxnSender for TxnSenderImpl {
                             );
                         }
                     } else {
-                        let leader_num_str = &leader_num.to_string();
                         statsd_time!(
                             "transaction_received_by_leader",
-                            transaction_data.sent_at.elapsed(), "api_key" => &api_key, "leader_num" => &leader_num_str);
+                            transaction_data.sent_at.elapsed(), "api_key" => &api_key, "batch" => "false");
                         info!(duration = &transaction_data.sent_at.elapsed().as_millis(), acquire_connection_time = &acquire_connection_time, "Transaction sent to leader");
                         return;
                     }
