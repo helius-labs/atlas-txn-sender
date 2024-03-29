@@ -125,13 +125,14 @@ impl TxnSenderImpl {
                                     let leader_num_str = leader_num.to_string();
                                     statsd_time!(
                                         "transaction_received_by_leader",
-                                        sent_at.elapsed(), "api_key" => "not_applicable", "batch" => "true");
+                                        sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "batch" => "true");
                                     return;
                                 }
                             }
                         });
                     }
                 }
+                leader_num += 1;
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
                     let _ = transaction_store.remove_transaction(signature);
