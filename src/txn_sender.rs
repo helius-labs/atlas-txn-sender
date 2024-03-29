@@ -107,6 +107,7 @@ impl TxnSenderImpl {
                             if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
                                 if i == 2 {
                                     error!(
+                                        batch = "true",
                                         "Failed to send transaction batch to {:?}: {}",
                                         leader, e
                                     );
@@ -244,7 +245,6 @@ impl TxnSender for TxnSenderImpl {
             .request_metadata
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
-        let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
@@ -262,6 +262,7 @@ impl TxnSender for TxnSenderImpl {
                     if let Err(e) = conn.send_data(&wire_transaction).await {
                         if i == 2 {
                             error!(
+                                batch = "false",
                                 api_key = api_key,
                                 "Failed to send transaction to {:?}: {}", leader, e
                             );
