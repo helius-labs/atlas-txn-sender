@@ -410,10 +410,10 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-client",
- "solana-program-runtime",
- "solana-rpc-client-api",
- "solana-sdk",
- "solana-transaction-status",
+ "solana-program-runtime 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-rpc-client-api 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-transaction-status 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "tikv-jemallocator",
  "tokio",
  "tonic 0.9.2",
@@ -3626,9 +3626,9 @@ dependencies = [
 
 [[package]]
 name = "solana-account-decoder"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f22a6b3c7e728d335dcfca063e57e1a7c43a5ad2d6889f9b1684b1ab5cc25dd4"
+checksum = "8d76c43ef61f527d719b5c6bfa5a62ebba60839739125da9e8a00fb82349afd2"
 dependencies = [
  "Inflector",
  "base64 0.21.7",
@@ -3639,8 +3639,32 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "solana-config-program",
- "solana-sdk",
+ "solana-config-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token",
+ "spl-token-2022",
+ "spl-token-group-interface",
+ "spl-token-metadata-interface",
+ "thiserror",
+ "zstd",
+]
+
+[[package]]
+name = "solana-account-decoder"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "Inflector",
+ "base64 0.21.7",
+ "bincode",
+ "bs58",
+ "bv",
+ "lazy_static",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "solana-config-program 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "spl-token",
  "spl-token-2022",
  "spl-token-group-interface",
@@ -3651,15 +3675,14 @@ dependencies = [
 
 [[package]]
 name = "solana-clap-utils"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0702c8a53c0c86a704ceaaa7a5bbe19d21c217b0b18815f6f629ef1b4a4d428"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "chrono",
  "clap 2.34.0",
  "rpassword",
  "solana-remote-wallet",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "tiny-bip39",
  "uriparse",
@@ -3668,9 +3691,8 @@ dependencies = [
 
 [[package]]
 name = "solana-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de7cc0c90c0b8ad5033062895682223d203c172d8bcecd3a1f97e91e72c10d11"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3683,14 +3705,14 @@ dependencies = [
  "quinn",
  "rayon",
  "solana-connection-cache",
- "solana-measure",
- "solana-metrics",
+ "solana-measure 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-pubsub-client",
  "solana-quic-client",
  "solana-rpc-client",
- "solana-rpc-client-api",
+ "solana-rpc-client-api 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-rpc-client-nonce-utils",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-streamer",
  "solana-thin-client",
  "solana-tpu-client",
@@ -3701,23 +3723,35 @@ dependencies = [
 
 [[package]]
 name = "solana-config-program"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dae9df8d8b30eb66dd3b1bc9b634b21e5ac32ac8aea43d8114eea1553944af44"
+checksum = "e3afd4e309d304e296765cab716fb1fd66c66ec300465c8b26f8cce763275132"
 dependencies = [
  "bincode",
  "chrono",
  "serde",
  "serde_derive",
- "solana-program-runtime",
- "solana-sdk",
+ "solana-program-runtime 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "solana-config-program"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "bincode",
+ "chrono",
+ "serde",
+ "serde_derive",
+ "solana-program-runtime 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
 ]
 
 [[package]]
 name = "solana-connection-cache"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd72e23fb92c6f26d5990d9196dd58be3c4b6453bb86a51bb4612bc5a37370d"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3728,18 +3762,18 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rcgen",
- "solana-measure",
- "solana-metrics",
- "solana-sdk",
+ "solana-measure 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "tokio",
 ]
 
 [[package]]
 name = "solana-frozen-abi"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b29d81ae90aa6acd4e7a3809d4f6516f888c780182819ccc12187cd02e59b94"
+checksum = "fb1b8230474ae9f7c841060c299999124582e8d2a0448d7847720792e98cc64e"
 dependencies = [
  "ahash 0.8.5",
  "blake3",
@@ -3760,16 +3794,56 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha2 0.10.7",
- "solana-frozen-abi-macro",
+ "solana-frozen-abi-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "subtle",
+ "thiserror",
+]
+
+[[package]]
+name = "solana-frozen-abi"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "ahash 0.8.5",
+ "blake3",
+ "block-buffer 0.10.4",
+ "bs58",
+ "bv",
+ "byteorder",
+ "cc",
+ "either",
+ "generic-array",
+ "im",
+ "lazy_static",
+ "log",
+ "memmap2",
+ "rustc_version",
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+ "serde_json",
+ "sha2 0.10.7",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "subtle",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-frozen-abi-macro"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9c4400284bb28fedd23abc0e7008f9ec7db8d20f9b296a438bd08ed417db98e"
+checksum = "793910ab733b113b80c357f8f492dda2fabd5671c4ea03db3aa4e46b938fdbe3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rustc_version",
+ "syn 2.0.48",
+]
+
+[[package]]
+name = "solana-frozen-abi-macro"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3779,9 +3853,19 @@ dependencies = [
 
 [[package]]
 name = "solana-logger"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c0fbccd60c8332712714468630d51c8668c838459fc5ffecfa615c84248eb82"
+checksum = "6d3f819af39632dc538a566c937253bf46256e4c0e60f621c6db448bc7c76294"
+dependencies = [
+ "env_logger",
+ "lazy_static",
+ "log",
+]
+
+[[package]]
+name = "solana-logger"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "env_logger",
  "lazy_static",
@@ -3790,34 +3874,56 @@ dependencies = [
 
 [[package]]
 name = "solana-measure"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79e1efcb7d2d9e4c4cf2f65c15505e1b4967bbfadd2aa004e417488b015be9fc"
+checksum = "cb045f0235b16f7d926f6e0338db822747d61559a1368c3cb017ba6e02c516d0"
 dependencies = [
  "log",
- "solana-sdk",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "solana-measure"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "log",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
 ]
 
 [[package]]
 name = "solana-metrics"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11c7e8d9664ab39890f627abc142d5f0402a16cb3591be4fdd288dbc35bd786c"
+checksum = "1af84362ad5804dc64ca88b1ca5c35bd41321e12d42c798ac06a6fbb60dd0e70"
 dependencies = [
  "crossbeam-channel",
  "gethostname",
  "lazy_static",
  "log",
  "reqwest",
- "solana-sdk",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "solana-metrics"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "crossbeam-channel",
+ "gethostname",
+ "lazy_static",
+ "log",
+ "reqwest",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-net-utils"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a39ec45feab4006a0c6a798642295947632d2b92ac75495c33387014667f9e6"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "bincode",
  "clap 3.2.25",
@@ -3828,18 +3934,17 @@ dependencies = [
  "serde",
  "serde_derive",
  "socket2 0.5.4",
- "solana-logger",
- "solana-sdk",
- "solana-version",
+ "solana-logger 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-version 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "tokio",
  "url",
 ]
 
 [[package]]
 name = "solana-perf"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3950864d7f38cfe7d4c800101b22784c04db29fd9e154f28e983e46cb6d980cb"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "ahash 0.8.5",
  "bincode",
@@ -3856,19 +3961,19 @@ dependencies = [
  "rayon",
  "rustc_version",
  "serde",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
- "solana-metrics",
+ "solana-frozen-abi 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-rayon-threadlimit",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-vote-program",
 ]
 
 [[package]]
 name = "solana-program"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e6f6bf27bf9e16803bfe6a2fe01b2431258ec9b4d6ea17b801717480995aaa0"
+checksum = "581f38a870bffbe623d900c68579984671f8dfa35bbfb3309d7134de22ce8652"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3909,9 +4014,62 @@ dependencies = [
  "serde_json",
  "sha2 0.10.7",
  "sha3 0.10.8",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
- "solana-sdk-macro",
+ "solana-frozen-abi 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-frozen-abi-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+ "tiny-bip39",
+ "wasm-bindgen",
+ "zeroize",
+]
+
+[[package]]
+name = "solana-program"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff",
+ "ark-serialize",
+ "base64 0.21.7",
+ "bincode",
+ "bitflags 2.4.0",
+ "blake3",
+ "borsh 0.10.3",
+ "borsh 0.9.3",
+ "bs58",
+ "bv",
+ "bytemuck",
+ "cc",
+ "console_error_panic_hook",
+ "console_log",
+ "curve25519-dalek",
+ "getrandom 0.2.10",
+ "itertools",
+ "js-sys",
+ "lazy_static",
+ "libc",
+ "libsecp256k1",
+ "light-poseidon",
+ "log",
+ "memoffset 0.9.0",
+ "num-bigint 0.4.4",
+ "num-derive 0.3.3",
+ "num-traits",
+ "parking_lot",
+ "rand 0.8.5",
+ "rustc_version",
+ "rustversion",
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+ "serde_json",
+ "sha2 0.10.7",
+ "sha3 0.10.8",
+ "solana-frozen-abi 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "tiny-bip39",
  "wasm-bindgen",
@@ -3920,9 +4078,9 @@ dependencies = [
 
 [[package]]
 name = "solana-program-runtime"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a92f2a945295cdc782e5a9223b96982755e32babc6e7992ca3f73ccccd111ce"
+checksum = "490b6f65aced077e0c5e57c20f151a134458fc350905c20d7dcf3f2162eaa6f6"
 dependencies = [
  "base64 0.21.7",
  "bincode",
@@ -3937,20 +4095,46 @@ dependencies = [
  "rand 0.8.5",
  "rustc_version",
  "serde",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
- "solana-measure",
- "solana-metrics",
- "solana-sdk",
+ "solana-frozen-abi 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-frozen-abi-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-measure 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-metrics 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana_rbpf",
+ "thiserror",
+]
+
+[[package]]
+name = "solana-program-runtime"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "base64 0.21.7",
+ "bincode",
+ "eager",
+ "enum-iterator",
+ "itertools",
+ "libc",
+ "log",
+ "num-derive 0.3.3",
+ "num-traits",
+ "percentage",
+ "rand 0.8.5",
+ "rustc_version",
+ "serde",
+ "solana-frozen-abi 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-measure 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana_rbpf",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-pubsub-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01c9090c2938ee4e02ac09528e2fc03897ef6645310cf8ba340baa8324eb1796"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "crossbeam-channel",
  "futures-util",
@@ -3960,9 +4144,9 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "solana-account-decoder",
- "solana-rpc-client-api",
- "solana-sdk",
+ "solana-account-decoder 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-rpc-client-api 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -3973,9 +4157,8 @@ dependencies = [
 
 [[package]]
 name = "solana-quic-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25be026b8fe02dbef50af9f0942a306d8b2b536e407c8caf8947ef39e8ca1001"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-mutex",
  "async-trait",
@@ -3988,11 +4171,11 @@ dependencies = [
  "rcgen",
  "rustls",
  "solana-connection-cache",
- "solana-measure",
- "solana-metrics",
+ "solana-measure 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-net-utils",
- "solana-rpc-client-api",
- "solana-sdk",
+ "solana-rpc-client-api 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-streamer",
  "thiserror",
  "tokio",
@@ -4000,9 +4183,8 @@ dependencies = [
 
 [[package]]
 name = "solana-rayon-threadlimit"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce88200cc41f31414d149d2c9753512ecf746ac60da1e22631684fdfe99cf5c9"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "lazy_static",
  "num_cpus",
@@ -4010,9 +4192,8 @@ dependencies = [
 
 [[package]]
 name = "solana-remote-wallet"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5ca14a3dbc4a608698bba5fef23456072cee476592bf00f44dec0bff19417d4"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "console",
  "dialoguer",
@@ -4022,16 +4203,15 @@ dependencies = [
  "parking_lot",
  "qstring",
  "semver",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "uriparse",
 ]
 
 [[package]]
 name = "solana-rpc-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45106dab6a4b406ddfd6c0e6f4b4dea2c1cac5d1dbaf11ed644fc102f7293a9b"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
@@ -4044,20 +4224,20 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "solana-account-decoder",
- "solana-rpc-client-api",
- "solana-sdk",
- "solana-transaction-status",
- "solana-version",
+ "solana-account-decoder 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-rpc-client-api 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-transaction-status 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-version 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-vote-program",
  "tokio",
 ]
 
 [[package]]
 name = "solana-rpc-client-api"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0190bf789cc7a1f3508928f01051381cc15bda16120a2a080ff10aa311388970"
+checksum = "876b2e410cc2403ea3216893f05034b02a180431100eb831d0b67b14fca4d29f"
 dependencies = [
  "base64 0.21.7",
  "bs58",
@@ -4067,32 +4247,52 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "solana-account-decoder",
- "solana-sdk",
- "solana-transaction-status",
- "solana-version",
+ "solana-account-decoder 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-transaction-status 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-version 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token-2022",
+ "thiserror",
+]
+
+[[package]]
+name = "solana-rpc-client-api"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "base64 0.21.7",
+ "bs58",
+ "jsonrpc-core",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "solana-account-decoder 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-transaction-status 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-version 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "spl-token-2022",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-rpc-client-nonce-utils"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0959c952240cf1cf07de24c8a40ac8531ba545640558f7634c492ce8cf4a5005"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "clap 2.34.0",
  "solana-clap-utils",
  "solana-rpc-client",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-sdk"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa149a29cb505742bca6bce7447d979e746452ec40e9b1eb3e50d51a0f0510cd"
+checksum = "0d70ab837cc79ed67df6fdb145f1ffd544f1eaa60b0757b750f4864b90498bad"
 dependencies = [
  "assert_matches",
  "base64 0.21.7",
@@ -4132,11 +4332,64 @@ dependencies = [
  "serde_with",
  "sha2 0.10.7",
  "sha3 0.10.8",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
- "solana-logger",
- "solana-program",
- "solana-sdk-macro",
+ "solana-frozen-abi 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-frozen-abi-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-logger 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+ "uriparse",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "solana-sdk"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "assert_matches",
+ "base64 0.21.7",
+ "bincode",
+ "bitflags 2.4.0",
+ "borsh 0.10.3",
+ "bs58",
+ "bytemuck",
+ "byteorder",
+ "chrono",
+ "derivation-path",
+ "digest 0.10.7",
+ "ed25519-dalek",
+ "ed25519-dalek-bip32",
+ "generic-array",
+ "hmac 0.12.1",
+ "itertools",
+ "js-sys",
+ "lazy_static",
+ "libsecp256k1",
+ "log",
+ "memmap2",
+ "num-derive 0.3.3",
+ "num-traits",
+ "num_enum 0.6.1",
+ "pbkdf2 0.11.0",
+ "qstring",
+ "qualifier_attr",
+ "rand 0.7.3",
+ "rand 0.8.5",
+ "rustc_version",
+ "rustversion",
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+ "serde_json",
+ "serde_with",
+ "sha2 0.10.7",
+ "sha3 0.10.8",
+ "solana-frozen-abi 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-logger 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-program 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "uriparse",
  "wasm-bindgen",
@@ -4144,9 +4397,21 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk-macro"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd8ad88355cf03e34b60ba12f65dffc44054e453aa1113a50169ee42ab6ad7a3"
+checksum = "5f9d0433c4084a3260a32ec67f6b4272c4232d15e732be542cd5dfdf0ae1e784"
+dependencies = [
+ "bs58",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.48",
+]
+
+[[package]]
+name = "solana-sdk-macro"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "bs58",
  "proc-macro2",
@@ -4163,9 +4428,8 @@ checksum = "468aa43b7edb1f9b7b7b686d5c3aeb6630dc1708e86e31343499dd5c4d775183"
 
 [[package]]
 name = "solana-streamer"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8df7b1d9cfdfa37d3940ca6c20fa75e989e12432a430ebcb0e4ab316eb0e437b"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-channel",
  "bytes",
@@ -4185,9 +4449,9 @@ dependencies = [
  "rand 0.8.5",
  "rcgen",
  "rustls",
- "solana-metrics",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-perf",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "tokio",
  "x509-parser",
@@ -4195,24 +4459,22 @@ dependencies = [
 
 [[package]]
 name = "solana-thin-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00c98d10503361d23f2146a42d87639d7b58081d84b8c3b3cc7958db9434b655"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "bincode",
  "log",
  "rayon",
  "solana-connection-cache",
  "solana-rpc-client",
- "solana-rpc-client-api",
- "solana-sdk",
+ "solana-rpc-client-api 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
 ]
 
 [[package]]
 name = "solana-tpu-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e82965ce39184e2618f0c38f5aed625cdaf2aac1d6fe0d665ddcc9771d6313f"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4222,21 +4484,21 @@ dependencies = [
  "log",
  "rayon",
  "solana-connection-cache",
- "solana-measure",
- "solana-metrics",
+ "solana-measure 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-pubsub-client",
  "solana-rpc-client",
- "solana-rpc-client-api",
- "solana-sdk",
+ "solana-rpc-client-api 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
  "tokio",
 ]
 
 [[package]]
 name = "solana-transaction-status"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a4107eac6b20f3349c49af21eaca73cd3d92a2c1b03118531349415ab4e7f84"
+checksum = "29f58f2f864d900eddf2e21a99ebe445b6be525d597e44952f075d8237035b8e"
 dependencies = [
  "Inflector",
  "base64 0.21.7",
@@ -4248,8 +4510,32 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "solana-account-decoder",
- "solana-sdk",
+ "solana-account-decoder 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-associated-token-account",
+ "spl-memo",
+ "spl-token",
+ "spl-token-2022",
+ "thiserror",
+]
+
+[[package]]
+name = "solana-transaction-status"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "Inflector",
+ "base64 0.21.7",
+ "bincode",
+ "borsh 0.10.3",
+ "bs58",
+ "lazy_static",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "solana-account-decoder 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "spl-associated-token-account",
  "spl-memo",
  "spl-token",
@@ -4259,14 +4545,13 @@ dependencies = [
 
 [[package]]
 name = "solana-udp-client"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "def72d6f0b3d9f67a6a4ad4407abe318e31f816dd76d8bc6c410bacb6de68aad"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "async-trait",
  "solana-connection-cache",
  "solana-net-utils",
- "solana-sdk",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "solana-streamer",
  "thiserror",
  "tokio",
@@ -4274,25 +4559,39 @@ dependencies = [
 
 [[package]]
 name = "solana-version"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67f6b247004ce32a78a3e441f7d90f07cb4ade51e07ac32bccbb493ab41f6261"
+checksum = "532f5d631562587facc5fe88abd2e31c0d1f29012b6766c664db9f05a39fb05b"
 dependencies = [
  "log",
  "rustc_version",
  "semver",
  "serde",
  "serde_derive",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
- "solana-sdk",
+ "solana-frozen-abi 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-frozen-abi-macro 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "solana-version"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
+dependencies = [
+ "log",
+ "rustc_version",
+ "semver",
+ "serde",
+ "serde_derive",
+ "solana-frozen-abi 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
 ]
 
 [[package]]
 name = "solana-vote-program"
-version = "1.17.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ea6ab44f5f52fba9daa7455686e516c4fde9004503503f6ecbd1975e5875226"
+version = "1.17.28"
+source = "git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28#a67767a03c394c9c0211b3167d7ddd4fb6e459f5"
 dependencies = [
  "bincode",
  "log",
@@ -4301,20 +4600,20 @@ dependencies = [
  "rustc_version",
  "serde",
  "serde_derive",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
- "solana-metrics",
- "solana-program",
- "solana-program-runtime",
- "solana-sdk",
+ "solana-frozen-abi 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-frozen-abi-macro 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-metrics 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-program 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-program-runtime 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
+ "solana-sdk 1.17.28 (git+https://github.com/helius-labs/solana?branch=quic-debugging-1.17.28)",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-zk-token-sdk"
-version = "1.17.24"
+version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7845f8390725707661732fb4df99c5c82eb3f7549c187160c317706e839c5702"
+checksum = "5aef1b48d9fdb2619349d2d15942d83c99aabe995ff945d9b418176373aa823c"
 dependencies = [
  "aes-gcm-siv",
  "base64 0.21.7",
@@ -4332,8 +4631,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3 0.9.1",
- "solana-program",
- "solana-sdk",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "subtle",
  "thiserror",
  "zeroize",
@@ -4384,7 +4683,7 @@ dependencies = [
  "borsh 0.10.3",
  "num-derive 0.4.1",
  "num-traits",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-token",
  "spl-token-2022",
  "thiserror",
@@ -4397,7 +4696,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cce5d563b58ef1bb2cdbbfe0dfb9ffdc24903b10ae6a4df2d8f425ece375033f"
 dependencies = [
  "bytemuck",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-discriminator-derive",
 ]
 
@@ -4431,7 +4730,7 @@ version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0f180b03318c3dbab3ef4e1e4d46d5211ae3c780940dd0a28695aba4b59a75a"
 dependencies = [
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4442,7 +4741,7 @@ checksum = "2881dddfca792737c0706fa0175345ab282b1b0879c7d877bad129645737c079"
 dependencies = [
  "borsh 0.10.3",
  "bytemuck",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "solana-zk-token-sdk",
  "spl-program-error",
 ]
@@ -4455,7 +4754,7 @@ checksum = "249e0318493b6bcf27ae9902600566c689b7dfba9f1bdff5893e92253374e78c"
 dependencies = [
  "num-derive 0.4.1",
  "num-traits",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-program-error-derive",
  "thiserror",
 ]
@@ -4479,7 +4778,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "615d381f48ddd2bb3c57c7f7fb207591a2a05054639b18a62e785117dd7a8683"
 dependencies = [
  "bytemuck",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -4497,7 +4796,7 @@ dependencies = [
  "num-derive 0.3.3",
  "num-traits",
  "num_enum 0.6.1",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4512,7 +4811,7 @@ dependencies = [
  "num-derive 0.4.1",
  "num-traits",
  "num_enum 0.7.2",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "solana-security-txt",
  "solana-zk-token-sdk",
  "spl-memo",
@@ -4532,7 +4831,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b889509d49fa74a4a033ca5dae6c2307e9e918122d97e58562f5c4ffa795c75d"
 dependencies = [
  "bytemuck",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -4545,7 +4844,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c16ce3ba6979645fb7627aa1e435576172dd63088dc7848cb09aa331fa1fe4f"
 dependencies = [
  "borsh 0.10.3",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -4560,7 +4859,7 @@ checksum = "7aabdb7c471566f6ddcee724beb8618449ea24b399e58d464d6b5bc7db550259"
 dependencies = [
  "arrayref",
  "bytemuck",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -4575,7 +4874,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a468e6f6371f9c69aae760186ea9f1a01c2908351b06a5e0026d21cfc4d7ecac"
 dependencies = [
  "bytemuck",
- "solana-program",
+ "solana-program 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-discriminator",
  "spl-pod",
  "spl-program-error",
@@ -5627,8 +5926,8 @@ dependencies = [
 
 [[package]]
 name = "yellowstone-grpc-client"
-version = "1.14.0+solana.1.17.24"
-source = "git+https://github.com/helius-labs/yellowstone-grpc?tag=v1.13.0+solana.1.17.24#bd0f1623d7f517bdffa7090cc889bf217de121db"
+version = "1.14.0+solana.1.17.28"
+source = "git+https://github.com/helius-labs/yellowstone-grpc?tag=v1.13.0+solana.1.17.28#aafd827df872f093535c425ded4eca423929a3d0"
 dependencies = [
  "bytes",
  "futures",
@@ -5641,16 +5940,16 @@ dependencies = [
 
 [[package]]
 name = "yellowstone-grpc-proto"
-version = "1.13.0+solana.1.17.24"
-source = "git+https://github.com/helius-labs/yellowstone-grpc?tag=v1.13.0+solana.1.17.24#bd0f1623d7f517bdffa7090cc889bf217de121db"
+version = "1.13.0+solana.1.17.28"
+source = "git+https://github.com/helius-labs/yellowstone-grpc?tag=v1.13.0+solana.1.17.28#aafd827df872f093535c425ded4eca423929a3d0"
 dependencies = [
  "anyhow",
  "bincode",
  "prost 0.12.3",
  "protobuf-src",
- "solana-account-decoder",
- "solana-sdk",
- "solana-transaction-status",
+ "solana-account-decoder 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-sdk 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-transaction-status 1.17.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "tonic 0.10.2",
  "tonic-build",
 ]
