@@ -76,60 +76,62 @@ impl TxnSenderImpl {
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
-                let transcations = transaction_store.get_transactions();
-                statsd_gauge!("transaction_retry_queue_length", transcations.len() as u64);
+                let transactions = transaction_store.get_transactions();
+                statsd_gauge!("transaction_retry_queue_length", transactions.len() as u64);
 
                 // get wire transactions and push transactions that reached max retries to transactions_reached_max_retries
-                let mut wire_transactions = vec![];
-                for mut transaction_data in transcations.iter_mut() {
-                    if transaction_data.retry_count >= transaction_data.max_retries {
-                        transactions_reached_max_retries
-                            .push(get_signature(&transaction_data).unwrap());
-                    } else {
-                        transaction_data.retry_count += 1;
-                        wire_transactions.push(transaction_data.wire_transaction.clone());
-                    }
-                }
+                // let mut wire_transactions = vec![];
+                // for mut transaction_data in transactions.iter_mut() {
+                //     if transaction_data.retry_count >= transaction_data.max_retries {
+                //         transactions_reached_max_retries
+                //             .push(get_signature(&transaction_data).unwrap());
+                //     } else {
+                //         transaction_data.retry_count += 1;
+                //         wire_transactions.push(transaction_data.wire_transaction.clone());
+                //     }
+                // }
                 // send wire transactions to leaders
-                let wire_transactions = Arc::new(wire_transactions).clone();
+                // let wire_transactions = Arc::new(wire_transactions).clone();
                 let mut leader_num = 0;
                 for leader in leader_tracker.get_leaders() {
                     if leader.tpu_quic.is_none() {
                         error!("leader {:?} has no tpu_quic", leader);
                         continue;
                     }
-                    let wire_transactions = wire_transactions.clone();
-                    let connection_cache = connection_cache.clone();
-                    let sent_at = Instant::now();
-                    txn_sender_runtime.spawn(async move {
-                        for i in 0..3 {
-                            let conn = connection_cache
-                                .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                            if let Err(e) = conn.send_data_batch(&wire_transactions.clone()).await {
-                                if i == 2 {
-                                    error!(
-                                        batch = "true",
-                                        "Failed to send transaction batch to {:?}: {}",
-                                        leader, e
-                                    );
+                    for transaction in transactions.iter() {
+                        let connection_cache = connection_cache.clone();
+                        let sent_at = Instant::now();
+                        let leader = Arc::new(leader.clone());
+                        let wire_transaction = transaction.wire_transaction.clone();
+                        txn_sender_runtime.spawn(async move {
+                            for i in 0..3 {
+                                let conn = connection_cache
+                                    .get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                                if let Err(e) = conn.send_data(&wire_transaction).await {
+                                    if i == 2 {
+                                        error!(
+                                            batch = "true",
+                                            "Failed to send transaction batch to {:?}: {}",
+                                            leader, e
+                                        );
+                                    } else {
+                                        warn!(
+                                            "Retrying to send transaction batch to {:?}: {}",
+                                            leader, e
+                                        );
+                                    }
+                                    statsd_count!("transaction_send_error", 1);
                                 } else {
-                                    warn!(
-                                        "Retrying to send transaction batch to {:?}: {}",
-                                        leader, e
-                                    );
+                                    let leader_num_str = leader_num.to_string();
+                                    statsd_time!(
+                                        "transaction_received_by_leader",
+                                        sent_at.elapsed(), "api_key" => "not_applicable", "batch" => "true");
+                                    return;
                                 }
-                                statsd_count!("transaction_send_error", 1);
-                            } else {
-                                let leader_num_str = leader_num.to_string();
-                                statsd_time!(
-                                    "transaction_received_by_leader",
-                                    sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "batch" => "true");
-                                return;
                             }
-                        }
-                    });
+                        });
+                    }
                 }
-                leader_num += 1;
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
                     let _ = transaction_store.remove_transaction(signature);
