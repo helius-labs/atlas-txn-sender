@@ -92,18 +92,18 @@ impl TxnSenderImpl {
                 // }
                 // send wire transactions to leaders
                 // let wire_transactions = Arc::new(wire_transactions).clone();
-                let mut leader_num = 0;
-                for leader in leader_tracker.get_leaders() {
-                    if leader.tpu_quic.is_none() {
-                        error!("leader {:?} has no tpu_quic", leader);
-                        continue;
+                for mut transaction_data in transactions.iter_mut() {
+                    if transaction_data.retry_count >= transaction_data.max_retries {
+                        transactions_reached_max_retries
+                            .push(get_signature(&transaction_data).unwrap());
+                    } else {
+                        transaction_data.retry_count += 1;
                     }
-                    for mut transaction_data in transactions.iter_mut() {
-                        if transaction_data.retry_count >= transaction_data.max_retries {
-                            transactions_reached_max_retries
-                                .push(get_signature(&transaction_data).unwrap());
-                        } else {
-                            transaction_data.retry_count += 1;
+                    let mut leader_num = 0;
+                    for leader in leader_tracker.get_leaders() {
+                        if leader.tpu_quic.is_none() {
+                            error!("leader {:?} has no tpu_quic", leader);
+                            continue;
                         }
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
@@ -136,8 +136,8 @@ impl TxnSenderImpl {
                                 }
                             }
                         });
+                        leader_num += 1;
                     }
-                    leader_num += 1;
                 }
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
