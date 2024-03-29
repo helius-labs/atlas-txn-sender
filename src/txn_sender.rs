@@ -98,11 +98,17 @@ impl TxnSenderImpl {
                         error!("leader {:?} has no tpu_quic", leader);
                         continue;
                     }
-                    for transaction in transactions.iter() {
+                    for mut transaction_data in transactions.iter_mut() {
+                        if transaction_data.retry_count >= transaction_data.max_retries {
+                            transactions_reached_max_retries
+                                .push(get_signature(&transaction_data).unwrap());
+                        } else {
+                            transaction_data.retry_count += 1;
+                        }
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
-                        let wire_transaction = transaction.wire_transaction.clone();
+                        let wire_transaction = transaction_data.wire_transaction.clone();
                         txn_sender_runtime.spawn(async move {
                             for i in 0..3 {
                                 let conn = connection_cache
