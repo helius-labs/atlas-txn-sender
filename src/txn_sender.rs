@@ -131,8 +131,8 @@ impl TxnSenderImpl {
                             }
                         });
                     }
+                    leader_num += 1;
                 }
-                leader_num += 1;
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
                     let _ = transaction_store.remove_transaction(signature);
