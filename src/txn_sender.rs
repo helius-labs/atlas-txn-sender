@@ -109,6 +109,7 @@ impl TxnSenderImpl {
                                         );
                                     } else {
                                         warn!(
+                                            batch = "true",
                                             "Retrying to send transaction batch to {:?}: {}",
                                             leader, e
                                         );
@@ -255,7 +256,7 @@ impl TxnSender for TxnSenderImpl {
             let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
                 for i in 0..3 {
-                    let mut start = Instant::now();
+                    let start = Instant::now();
                     let conn =
                         connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                     let acquire_connection_time = start.elapsed().as_millis();
@@ -268,6 +269,7 @@ impl TxnSender for TxnSenderImpl {
                             );
                         } else {
                             warn!(
+                                batch = "false",
                                 api_key = api_key,
                                 "Retrying to send transaction to {:?}: {}", leader, e
                             );
