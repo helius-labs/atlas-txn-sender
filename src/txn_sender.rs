@@ -79,37 +79,40 @@ impl TxnSenderImpl {
                 let transactions = transaction_store.get_transactions();
                 statsd_gauge!("transaction_retry_queue_length", transactions.len() as u64);
 
+                let mut wire_transactions = vec![];
                 for mut transaction_data in transactions.iter_mut() {
+                    wire_transactions.push(transaction_data.wire_transaction.clone());
                     if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
                             .push(get_signature(&transaction_data).unwrap());
                     } else {
                         transaction_data.retry_count += 1;
                     }
-                    let mut leader_num = 0;
-                    for leader in leader_tracker.get_leaders() {
-                        if leader.tpu_quic.is_none() {
-                            error!("leader {:?} has no tpu_quic", leader);
-                            continue;
-                        }
-                        let connection_cache = connection_cache.clone();
-                        let sent_at = Instant::now();
-                        let leader = Arc::new(leader.clone());
-                        let wire_transaction = transaction_data.wire_transaction.clone();
-                        txn_sender_runtime.spawn(async move {
+                }
+                let mut leader_num = 0;
+                for leader in leader_tracker.get_leaders() {
+                    if leader.tpu_quic.is_none() {
+                        error!("leader {:?} has no tpu_quic", leader);
+                        continue;
+                    }
+                    let connection_cache = connection_cache.clone();
+                    let sent_at = Instant::now();
+                    let leader = Arc::new(leader.clone());
+                    let wire_transactions = wire_transactions.clone();
+                    txn_sender_runtime.spawn(async move {
                             for i in 0..3 {
                                 let conn = connection_cache
                                     .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                                if let Err(e) = conn.send_data(&wire_transaction).await {
+                                if let Err(e) = conn.send_data_batch(&wire_transactions).await {
                                     if i == 2 {
                                         error!(
-                                            batch = "true",
+                                            retry = "true",
                                             "Failed to send transaction batch to {:?}: {}",
                                             leader, e
                                         );
                                     } else {
                                         warn!(
-                                            batch = "true",
+                                            retry = "true",
                                             "Retrying to send transaction batch to {:?}: {}",
                                             leader, e
                                         );
@@ -119,14 +122,61 @@ impl TxnSenderImpl {
                                     let leader_num_str = leader_num.to_string();
                                     statsd_time!(
                                         "transaction_received_by_leader",
-                                        sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "batch" => "true");
+                                        sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true");
                                     return;
                                 }
                             }
                         });
-                        leader_num += 1;
-                    }
+                    leader_num += 1;
                 }
+                // for mut transaction_data in transactions.iter_mut() {
+                //     if transaction_data.retry_count >= transaction_data.max_retries {
+                //         transactions_reached_max_retries
+                //             .push(get_signature(&transaction_data).unwrap());
+                //     } else {
+                //         transaction_data.retry_count += 1;
+                //     }
+                //     let mut leader_num = 0;
+                //     for leader in leader_tracker.get_leaders() {
+                //         if leader.tpu_quic.is_none() {
+                //             error!("leader {:?} has no tpu_quic", leader);
+                //             continue;
+                //         }
+                //         let connection_cache = connection_cache.clone();
+                //         let sent_at = Instant::now();
+                //         let leader = Arc::new(leader.clone());
+                //         let wire_transaction = transaction_data.wire_transaction.clone();
+                //         txn_sender_runtime.spawn(async move {
+                //             for i in 0..3 {
+                //                 let conn = connection_cache
+                //                     .get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                //                 if let Err(e) = conn.send_data(&wire_transaction).await {
+                //                     if i == 2 {
+                //                         error!(
+                //                             batch = "true",
+                //                             "Failed to send transaction batch to {:?}: {}",
+                //                             leader, e
+                //                         );
+                //                     } else {
+                //                         warn!(
+                //                             batch = "true",
+                //                             "Retrying to send transaction batch to {:?}: {}",
+                //                             leader, e
+                //                         );
+                //                     }
+                //                     statsd_count!("transaction_send_error", 1);
+                //                 } else {
+                //                     let leader_num_str = leader_num.to_string();
+                //                     statsd_time!(
+                //                         "transaction_received_by_leader",
+                //                         sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "batch" => "true");
+                //                     return;
+                //                 }
+                //             }
+                //         });
+                //         leader_num += 1;
+                //     }
+                // }
                 // remove transactions that reached max retries
                 for signature in transactions_reached_max_retries {
                     let _ = transaction_store.remove_transaction(signature);
@@ -263,13 +313,13 @@ impl TxnSender for TxnSenderImpl {
                     if let Err(e) = conn.send_data(&wire_transaction).await {
                         if i == 2 {
                             error!(
-                                batch = "false",
+                                retry = "false",
                                 api_key = api_key,
                                 "Failed to send transaction to {:?}: {}", leader, e
                             );
                         } else {
                             warn!(
-                                batch = "false",
+                                retry = "false",
                                 api_key = api_key,
                                 "Retrying to send transaction to {:?}: {}", leader, e
                             );
@@ -278,7 +328,7 @@ impl TxnSender for TxnSenderImpl {
                         let leader_num_str = leader_num.to_string();
                         statsd_time!(
                             "transaction_received_by_leader",
-                            transaction_data.sent_at.elapsed(), "api_key" => &api_key, "batch" => "false", "leader_num" => &leader_num_str);
+                            transaction_data.sent_at.elapsed(), "api_key" => &api_key, "retry" => "false", "leader_num" => &leader_num_str);
                         info!(duration = &transaction_data.sent_at.elapsed().as_millis(), acquire_connection_time = &acquire_connection_time, "Transaction sent to leader");
                         return;
                     }
