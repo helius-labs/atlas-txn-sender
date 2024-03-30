@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::{
     runtime::{Builder, Runtime},
-    time::sleep,
+    time::{sleep, timeout},
 };
 use tonic::async_trait;
 use tracing::{error, info, warn};
@@ -26,6 +26,7 @@ use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
 const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
+const MAX_TIMEOUT_SEND_DATA: Duration = Duration::from_millis(500);
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
@@ -103,7 +104,7 @@ impl TxnSenderImpl {
                             for i in 0..3 {
                                 let conn = connection_cache
                                     .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                                if let Err(e) = conn.send_data_batch(&wire_transactions).await {
+                                if let Err(e) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data_batch(&wire_transactions)).await {
                                     if i == 2 {
                                         error!(
                                             retry = "true",
@@ -311,7 +312,7 @@ impl TxnSender for TxnSenderImpl {
                     let conn =
                         connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                     let acquire_connection_time = start.elapsed().as_millis();
-                    if let Err(e) = conn.send_data(&wire_transaction).await {
+                    if let Err(e) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                         if i == 2 {
                             error!(
                                 retry = "false",
