@@ -3,7 +3,7 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::VersionedTransaction;
+use solana_sdk::transaction::{self, VersionedTransaction};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -209,16 +209,17 @@ impl TxnSenderImpl {
             .map(|m| m.api_key.clone())
             .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
-            let (retries, max_retries) = transaction_store
-                .get_transactions()
-                .get(&signature)
-                .map(|t| (Some(t.retry_count as i32), Some(t.max_retries as i32)))
-                .unwrap_or((None, None));
+            let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
+            let transcation_data = transaction_store.remove_transaction(signature);
+            let mut retries = None;
+            let mut max_retries = None;
+            if let Some(transaction_data) = transcation_data {
+                retries = Some(transaction_data.retry_count as i32);
+                max_retries = Some(transaction_data.max_retries as i32);
+            }
+
             let retries_tag = bin_counter_to_tag(retries, &RETRY_COUNT_BINS.to_vec());
             let max_retries_tag: String = bin_counter_to_tag(max_retries, &MAX_RETRIES_BINS.to_vec());
-
-            let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
-            transaction_store.remove_transaction(signature);
 
             // Collect metrics
             // We separate the retry metrics to reduce the cardinality with API key and price.
