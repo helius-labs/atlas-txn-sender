@@ -27,7 +27,7 @@ solana-client = { git = "https://github.com/helius-labs/solana", branch = "quic-
 solana-transaction-status = { git = "https://github.com/helius-labs/solana", branch = "quic-debugging-1.17.28" }
 solana-sdk = { git = "https://github.com/helius-labs/solana", branch = "quic-debugging-1.17.28" }
 solana-program-runtime = { git = "https://github.com/helius-labs/solana", branch = "quic-debugging-1.17.28" }
-solana-rpc-client-api = { version = "1.17.28" }
+solana-rpc-client-api = { git = "https://github.com/helius-labs/solana", branch = "quic-debugging-1.17.28" }
 cadence = "0.29.0"
 cadence-macros = "0.29.0"
 tower = { version = "0.4.13", features = ["full"] }
