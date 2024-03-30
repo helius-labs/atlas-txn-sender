@@ -124,10 +124,9 @@ impl TxnSenderImpl {
                                         }
                                     } else {
                                         let leader_num_str = leader_num.to_string();
-                                        let retry_num = &i.to_string();
                                         statsd_time!(
                                             "transaction_received_by_leader",
-                                            sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true", "retry_num" => &retry_num);
+                                            sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true");
                                         return;
                                     }
                                 }
@@ -285,11 +284,9 @@ impl TxnSender for TxnSenderImpl {
                             }
                         } else {
                             let leader_num_str = leader_num.to_string();
-                            let retry_num = &i.to_string();
                             statsd_time!(
                                 "transaction_received_by_leader",
-                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false",
-                                "retry_num" => &retry_num);
+                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
                             return;
                         }
                     }
