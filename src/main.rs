@@ -122,14 +122,15 @@ async fn main() -> anyhow::Result<()> {
     let txn_send_retry_interval_seconds = env.txn_send_retry_interval.unwrap_or(2);
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker,
-        transaction_store,
+        transaction_store.clone(),
         connection_cache,
         solana_rpc,
         env.txn_sender_threads.unwrap_or(4),
         txn_send_retry_interval_seconds,
     ));
     let max_txn_send_retries = env.max_txn_send_retries.unwrap_or(5);
-    let atlas_txn_sender = AtlasTxnSenderImpl::new(txn_sender, max_txn_send_retries);
+    let atlas_txn_sender =
+        AtlasTxnSenderImpl::new(txn_sender, transaction_store, max_txn_send_retries);
     let handle = server.start(atlas_txn_sender.into_rpc());
     handle.stopped().await;
     Ok(())

@@ -1,9 +1,11 @@
 use core::panic;
 use std::{
-    collections::HashMap, sync::{
+    collections::HashMap,
+    sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
-    }, time::{Duration, Instant}
+    },
+    time::{Duration, Instant},
 };
 
 use cadence_macros::statsd_time;
@@ -158,7 +160,16 @@ impl LeaderTracker for LeaderTrackerImpl {
                 break;
             }
         }
-        info!("leaders: {:?}, start_slot: {:?}", leaders.clone().keys(), start_slot);
-        leaders.values().clone().into_iter().map(|v| v.to_owned()).collect()
+        info!(
+            "leaders: {:?}, start_slot: {:?}",
+            leaders.clone().keys(),
+            start_slot
+        );
+        leaders
+            .values()
+            .clone()
+            .into_iter()
+            .map(|v| v.to_owned())
+            .collect()
     }
 }
