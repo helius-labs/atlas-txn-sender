@@ -28,7 +28,7 @@ const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
 const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
 const MAX_TIMEOUT_SEND_DATA: Duration = Duration::from_millis(500);
 const MAX_TIMEOUT_SEND_DATA_BATCH: Duration = Duration::from_millis(500);
-const SEND_TXN_RETRIES: usize = 5;
+const SEND_TXN_RETRIES: usize = 10;
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
