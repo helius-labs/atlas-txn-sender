@@ -123,9 +123,10 @@ impl TxnSenderImpl {
                                         }
                                     } else {
                                         let leader_num_str = leader_num.to_string();
+                                        let retry_num = &i.to_string();
                                         statsd_time!(
                                             "transaction_received_by_leader",
-                                            sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true");
+                                            sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true", "retry_num" => &retry_num);
                                         return;
                                     }
                                 }
@@ -319,21 +320,23 @@ impl TxnSender for TxnSenderImpl {
                             if i == SEND_TXN_RETRIES-1 {
                                 error!(
                                     retry = "false",
-                                    "Failed to send transaction batch to {:?}: {}",
+                                    "Failed to send transaction to {:?}: {}",
                                     leader, e
                                 );
                             } else {
                                 warn!(
                                     retry = "false",
-                                    "Retrying to send transaction batch to {:?}: {}",
+                                    "Retrying to send transaction to {:?}: {}",
                                     leader, e
                                 );
                             }
                         } else {
                             let leader_num_str = leader_num.to_string();
+                            let retry_num = &i.to_string();
                             statsd_time!(
                                 "transaction_received_by_leader",
-                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
+                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false",
+                                "retry_num" => &retry_num);
                             return;
                         }
                     }
