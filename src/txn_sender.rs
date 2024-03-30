@@ -26,7 +26,8 @@ use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
 const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
-const MAX_TIMEOUT_SEND_DATA: Duration = Duration::from_secs(2);
+const MAX_TIMEOUT_SEND_DATA: Duration = Duration::from_secs(500);
+const SEND_TXN_RETRIES: usize = 20;
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
@@ -102,12 +103,12 @@ impl TxnSenderImpl {
                     let wire_transactions = wire_transactions.clone();
                     txn_sender_runtime.spawn(async move {
                             // retry unless its a timeout
-                            for i in 0..3 {
+                            for i in 0..SEND_TXN_RETRIES {
                                 let conn = connection_cache
                                     .get_nonblocking_connection(&leader.tpu_quic.unwrap());
                                 if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data_batch(&wire_transactions)).await {
                                     if let Err(e) = result {
-                                        if i == 2 {
+                                        if i == SEND_TXN_RETRIES-1 {
                                             error!(
                                                 retry = "true",
                                                 "Failed to send transaction batch to {:?}: {}",
@@ -127,13 +128,6 @@ impl TxnSenderImpl {
                                             sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true");
                                         return;
                                     }
-                                } else {
-                                    error!(
-                                        retry = "true",
-                                        "Failed to send transaction batch to {:?}: {}",
-                                        leader,  "timeout".to_string()
-                                    );
-                                    return;
                                 }
                                 statsd_count!("transaction_send_error", 1);
                             }
@@ -317,12 +311,12 @@ impl TxnSender for TxnSenderImpl {
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
-                for i in 0..3 {
+                for i in 0..SEND_TXN_RETRIES {
                     let conn =
                         connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                         if let Err(e) = result {
-                            if i == 2 {
+                            if i == SEND_TXN_RETRIES-1 {
                                 error!(
                                     retry = "false",
                                     "Failed to send transaction batch to {:?}: {}",
@@ -342,13 +336,6 @@ impl TxnSender for TxnSenderImpl {
                                 transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
                             return;
                         }
-                    } else {
-                        error!(
-                            retry = "false",
-                            "Failed to send transaction batch to {:?}: {}",
-                            leader,  "timeout".to_string()
-                        );
-                        return;
                     }
                     statsd_count!("transaction_send_error", 1);
                 }
