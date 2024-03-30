@@ -27,6 +27,7 @@ use solana_sdk::compute_budget::ComputeBudgetInstruction;
 const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
 const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
 const MAX_TIMEOUT_SEND_DATA: Duration = Duration::from_secs(500);
+const MAX_TIMEOUT_SEND_DATA_BATCH: Duration = Duration::from_secs(2000);
 const SEND_TXN_RETRIES: usize = 20;
 
 #[async_trait]
@@ -106,7 +107,7 @@ impl TxnSenderImpl {
                             for i in 0..SEND_TXN_RETRIES {
                                 let conn = connection_cache
                                     .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                                if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data_batch(&wire_transactions)).await {
+                                if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data_batch(&wire_transactions)).await {
                                     if let Err(e) = result {
                                         if i == SEND_TXN_RETRIES-1 {
                                             error!(
@@ -342,54 +343,6 @@ impl TxnSender for TxnSenderImpl {
                     }
                     statsd_count!("transaction_send_error", 1);
                 }
-                 // for mut transaction_data in transactions.iter_mut() {
-                //     if transaction_data.retry_count >= transaction_data.max_retries {
-                //         transactions_reached_max_retries
-                //             .push(get_signature(&transaction_data).unwrap());
-                //     } else {
-                //         transaction_data.retry_count += 1;
-                //     }
-                //     let mut leader_num = 0;
-                //     for leader in leader_tracker.get_leaders() {
-                //         if leader.tpu_quic.is_none() {
-                //             error!("leader {:?} has no tpu_quic", leader);
-                //             continue;
-                //         }
-                //         let connection_cache = connection_cache.clone();
-                //         let sent_at = Instant::now();
-                //         let leader = Arc::new(leader.clone());
-                //         let wire_transaction = transaction_data.wire_transaction.clone();
-                //         txn_sender_runtime.spawn(async move {
-                //             for i in 0..3 {
-                //                 let conn = connection_cache
-                //                     .get_nonblocking_connection(&leader.tpu_quic.unwrap());
-                //                 if let Err(e) = conn.send_data(&wire_transaction).await {
-                //                     if i == 2 {
-                //                         error!(
-                //                             batch = "true",
-                //                             "Failed to send transaction batch to {:?}: {}",
-                //                             leader, e
-                //                         );
-                //                     } else {
-                //                         warn!(
-                //                             batch = "true",
-                //                             "Retrying to send transaction batch to {:?}: {}",
-                //                             leader, e
-                //                         );
-                //                     }
-                //                     statsd_count!("transaction_send_error", 1);
-                //                 } else {
-                //                     let leader_num_str = leader_num.to_string();
-                //                     statsd_time!(
-                //                         "transaction_received_by_leader",
-                //                         sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "batch" => "true");
-                //                     return;
-                //                 }
-                //             }
-                //         });
-                //         leader_num += 1;
-                //     }
-                // }
             });
             leader_num += 1;
         }
