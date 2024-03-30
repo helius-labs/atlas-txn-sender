@@ -324,13 +324,13 @@ impl TxnSender for TxnSenderImpl {
                         if let Err(e) = result {
                             if i == 2 {
                                 error!(
-                                    retry = "true",
+                                    retry = "false",
                                     "Failed to send transaction batch to {:?}: {}",
                                     leader, e
                                 );
                             } else {
                                 warn!(
-                                    retry = "true",
+                                    retry = "false",
                                     "Retrying to send transaction batch to {:?}: {}",
                                     leader, e
                                 );
@@ -339,12 +339,12 @@ impl TxnSender for TxnSenderImpl {
                             let leader_num_str = leader_num.to_string();
                             statsd_time!(
                                 "transaction_received_by_leader",
-                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "true");
+                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
                             return;
                         }
                     } else {
                         error!(
-                            retry = "true",
+                            retry = "false",
                             "Failed to send transaction batch to {:?}: {}",
                             leader,  "timeout".to_string()
                         );
