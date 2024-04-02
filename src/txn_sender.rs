@@ -268,7 +268,7 @@ impl TxnSender for TxnSenderImpl {
             self.txn_sender_runtime.spawn(async move {
                 for i in 0..SEND_TXN_RETRIES {
                     let mut socket = leader.tpu_quic.clone().unwrap();
-                    socket.set_port(socket.port() + 1);
+                    socket.set_port(socket.port() + 2);
                     let conn =
                         connection_cache.get_nonblocking_connection(&socket);
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
