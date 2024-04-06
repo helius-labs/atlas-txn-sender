@@ -43,6 +43,7 @@ struct AtlasTxnSenderEnv {
     txn_sender_threads: Option<usize>,
     max_txn_send_retries: Option<usize>,
     txn_send_retry_interval: Option<usize>,
+    max_retry_queue_size: Option<usize>,
 }
 
 // Defualt on RPC is 4
@@ -104,12 +105,11 @@ async fn main() -> anyhow::Result<()> {
         ));
     }
 
-    let client = Arc::new(RwLock::new(
-        GeyserGrpcClient::connect::<String, String>(env.grpc_url.unwrap(), env.x_token, None)
-            .unwrap(),
-    ));
     let transaction_store = Arc::new(TransactionStoreImpl::new());
-    let solana_rpc = Arc::new(GrpcGeyserImpl::new(client));
+    let solana_rpc = Arc::new(GrpcGeyserImpl::new(
+        env.grpc_url.clone().unwrap(),
+        env.x_token.clone(),
+    ));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
     let num_leaders = env.num_leaders.unwrap_or(2);
     let leader_offset = env.leader_offset.unwrap_or(0);
@@ -127,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
         solana_rpc,
         env.txn_sender_threads.unwrap_or(4),
         txn_send_retry_interval_seconds,
+        env.max_retry_queue_size,
     ));
     let max_txn_send_retries = env.max_txn_send_retries.unwrap_or(5);
     let atlas_txn_sender =
