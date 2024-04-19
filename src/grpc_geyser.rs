@@ -5,12 +5,12 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use cadence_macros::statsd_count;
 use dashmap::DashMap;
 use futures::sink::SinkExt;
-use futures::StreamExt;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use solana_sdk::clock::UnixTimestamp;
 use solana_sdk::signature::Signature;
 use tokio::time::sleep;
+use tokio_stream::StreamExt;
 use tonic::async_trait;
 use tracing::error;
 use yellowstone_grpc_client::GeyserGrpcClient;
@@ -91,47 +91,50 @@ impl GrpcGeyserImpl {
                     (grpc_tx, grpc_rx) = subscription.unwrap();
                 }
 
-                let message = tokio::time::timeout(TIMEOUT_DURATION, grpc_rx.next()).await;
+                let mut blockstream = grpc_rx.take_while(Result::is_ok);
 
-                match message {
-                    Ok(Some(Ok(message))) => match message.update_oneof {
-                        Some(UpdateOneof::Block(block)) => {
-                            let block_time = block.block_time.unwrap().timestamp;
-                            for transaction in block.transactions {
-                                let signature = Signature::new(&transaction.signature).to_string();
-                                signature_cache.insert(signature, (block_time, Instant::now()));
+                while let message = blockstream.try_next().await {
+                    match message {
+                        Ok(Some(message)) => match message.update_oneof {
+                            Some(UpdateOneof::Block(block)) => {
+                                let block_time = block.block_time.unwrap().timestamp;
+                                for transaction in block.transactions {
+                                    let signature =
+                                        Signature::new(&transaction.signature).to_string();
+                                    signature_cache.insert(signature, (block_time, Instant::now()));
+                                }
+                                tracing::info!(
+                                    "grpc_block_received: {}",
+                                    SystemTime::now()
+                                        .duration_since(SystemTime::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs()
+                                );
                             }
-                            tracing::info!(
-                                "grpc_block_received: {}",
-                                SystemTime::now()
-                                    .duration_since(SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs()
-                            );
-                        }
-                        Some(UpdateOneof::Ping(_)) => {
-                            let ping = grpc_tx.send(ping()).await;
-                            if let Err(e) = ping {
-                                error!("Error sending ping: {}", e);
-                                statsd_count!("grpc_ping_error", 1);
-                                break;
+                            Some(UpdateOneof::Ping(_)) => {
+                                // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
+                                // require periodic client pings then this is unnecessary
+                                let ping = grpc_tx.send(ping()).await;
+                                if let Err(e) = ping {
+                                    error!("Error sending ping: {}", e);
+                                    statsd_count!("grpc_ping_error", 1);
+                                    break;
+                                }
                             }
+                            Some(UpdateOneof::Pong(_)) => {}
+                            _ => {
+                                error!("Unknown message: {:?}", message);
+                            }
+                        },
+                        Ok(None) => {
+                            error!("Stream has terminated unexpectedly, restarting...");
+                            break;
                         }
-                        Some(UpdateOneof::Pong(_)) => {}
-                        _ => error!("Unknown message: {:?}", message),
-                    },
-                    Ok(Some(Err(error))) => {
-                        error!("error in block subscribe, resubscribing in 1 second: {error:?}");
-                        statsd_count!("grpc_resubscribe", 1);
-                        break;
-                    }
-                    Ok(None) => {
-                        error!("Stream has terminated unexpectedly, restarting...");
-                        break;
-                    }
-                    Err(_) => {
-                        error!("No blocks received in the last 5 seconds, restarting...");
-                        break;
+                        Err(_) => {
+                            error!("No blocks received in the last 5 seconds, restarting...");
+                            statsd_count!("grpc_resubscribe", 1);
+                            break;
+                        }
                     }
                 }
                 sleep(Duration::from_secs(1)).await;
