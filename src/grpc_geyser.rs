@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use cadence_macros::{statsd_count, statsd_time};
+use cadence_macros::statsd_count;
 use dashmap::DashMap;
 use futures::sink::SinkExt;
 use futures::StreamExt;
@@ -29,7 +29,6 @@ pub struct GrpcGeyserImpl {
     auth_header: Option<String>,
     cur_slot: Arc<AtomicU64>,
     signature_cache: Arc<DashMap<String, (UnixTimestamp, Instant)>>,
-    last_block_received: AtomicU64,
 }
 
 impl GrpcGeyserImpl {
@@ -39,7 +38,6 @@ impl GrpcGeyserImpl {
             auth_header,
             cur_slot: Arc::new(AtomicU64::new(0)),
             signature_cache: Arc::new(DashMap::new()),
-            last_block_received: AtomicU64::new(0),
         };
         // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
