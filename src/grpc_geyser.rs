@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use cadence_macros::statsd_count;
+use cadence_macros::{statsd_count, statsd_time};
 use dashmap::DashMap;
 use futures::sink::SinkExt;
 use futures::StreamExt;
@@ -22,11 +22,14 @@ use yellowstone_grpc_proto::geyser::{
 
 use crate::solana_rpc::SolanaRpc;
 
+const TIMEOUT_DURATION: Duration = Duration::from_secs(5);
+
 pub struct GrpcGeyserImpl {
     endpoint: String,
     auth_header: Option<String>,
     cur_slot: Arc<AtomicU64>,
     signature_cache: Arc<DashMap<String, (UnixTimestamp, Instant)>>,
+    last_block_received: AtomicU64,
 }
 
 impl GrpcGeyserImpl {
@@ -36,6 +39,7 @@ impl GrpcGeyserImpl {
             auth_header,
             cur_slot: Arc::new(AtomicU64::new(0)),
             signature_cache: Arc::new(DashMap::new()),
+            last_block_received: AtomicU64::new(0),
         };
         // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
@@ -88,39 +92,48 @@ impl GrpcGeyserImpl {
                     }
                     (grpc_tx, grpc_rx) = subscription.unwrap();
                 }
-                while let Some(message) = grpc_rx.next().await {
-                    match message {
-                        Ok(message) => match message.update_oneof {
-                            Some(UpdateOneof::Block(block)) => {
-                                let block_time = block.block_time.unwrap().timestamp;
-                                for transaction in block.transactions {
-                                    let signature =
-                                        Signature::new(&transaction.signature).to_string();
-                                    signature_cache.insert(signature, (block_time, Instant::now()));
-                                }
+
+                let message = tokio::time::timeout(TIMEOUT_DURATION, grpc_rx.next()).await;
+
+                match message {
+                    Ok(Some(Ok(message))) => match message.update_oneof {
+                        Some(UpdateOneof::Block(block)) => {
+                            let block_time = block.block_time.unwrap().timestamp;
+                            for transaction in block.transactions {
+                                let signature = Signature::new(&transaction.signature).to_string();
+                                signature_cache.insert(signature, (block_time, Instant::now()));
                             }
-                            Some(UpdateOneof::Ping(_)) => {
-                                // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
-                                // require periodic client pings then this is unnecessary
-                                let ping = grpc_tx.send(ping()).await;
-                                if let Err(e) = ping {
-                                    error!("Error sending ping: {}", e);
-                                    statsd_count!("grpc_ping_error", 1);
-                                    break;
-                                }
-                            }
-                            Some(UpdateOneof::Pong(_)) => {}
-                            _ => {
-                                error!("Unknown message: {:?}", message);
-                            }
-                        },
-                        Err(error) => {
-                            error!(
-                                "error in block subscribe, resubscribing in 1 second: {error:?}"
+                            tracing::info!(
+                                "grpc_block_received: {}",
+                                SystemTime::now()
+                                    .duration_since(SystemTime::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs()
                             );
-                            statsd_count!("grpc_resubscribe", 1);
-                            break;
                         }
+                        Some(UpdateOneof::Ping(_)) => {
+                            let ping = grpc_tx.send(ping()).await;
+                            if let Err(e) = ping {
+                                error!("Error sending ping: {}", e);
+                                statsd_count!("grpc_ping_error", 1);
+                                break;
+                            }
+                        }
+                        Some(UpdateOneof::Pong(_)) => {}
+                        _ => error!("Unknown message: {:?}", message),
+                    },
+                    Ok(Some(Err(error))) => {
+                        error!("error in block subscribe, resubscribing in 1 second: {error:?}");
+                        statsd_count!("grpc_resubscribe", 1);
+                        break;
+                    }
+                    Ok(None) => {
+                        error!("Stream has terminated unexpectedly, restarting...");
+                        break;
+                    }
+                    Err(_) => {
+                        error!("No blocks received in the last 5 seconds, restarting...");
+                        break;
                     }
                 }
                 sleep(Duration::from_secs(1)).await;
