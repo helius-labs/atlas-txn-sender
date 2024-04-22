@@ -98,17 +98,18 @@ impl GrpcGeyserImpl {
                         Ok(Some(message)) => match message.update_oneof {
                             Some(UpdateOneof::Block(block)) => {
                                 let block_time = block.block_time.unwrap().timestamp;
-                                for transaction in block.transactions {
+                                for transaction in &block.transactions {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
                                     signature_cache.insert(signature, (block_time, Instant::now()));
                                 }
                                 tracing::info!(
-                                    "grpc_block_received: {}",
+                                    "grpc_block_received: {}, with {} transactions",
                                     SystemTime::now()
                                         .duration_since(SystemTime::UNIX_EPOCH)
                                         .unwrap()
-                                        .as_secs()
+                                        .as_secs(),
+                                    block.transactions.len()
                                 );
                             }
                             Some(UpdateOneof::Ping(_)) => {
