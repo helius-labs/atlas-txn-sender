@@ -30,3 +30,4 @@
       - make 
       - libprotobuf-dev 
       - protobuf-compiler
+      - cargo
