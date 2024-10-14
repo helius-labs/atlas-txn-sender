@@ -1,0 +1,31 @@
+- name: add dd-agent user to systemd journal
+  become: true
+  become_user: root
+  shell: sudo usermod -a -G systemd-journal dd-agent
+
+- name: copy journald conf
+  become: true
+  become_user: root
+  template:
+      src: journald.yaml
+      dest: /etc/datadog-agent/conf.d/journald.d/conf.yaml
+      owner: root
+      group: root
+      mode: '0755'
+
+- name: copy systemd conf
+  become: true
+  become_user: root
+  template:
+      src: systemd.yaml
+      dest: /etc/datadog-agent/conf.d/systemd.d/conf.yaml
+      owner: root
+      group: root
+      mode: '0755'
+
+- name: restart dd agent
+  become: true
+  become_user: root
+  systemd:
+      name: datadog-agent
+      state: restarted

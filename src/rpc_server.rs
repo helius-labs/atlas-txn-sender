@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     str::FromStr,
     sync::Arc,
-    time::{Instant, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use cadence_macros::{statsd_count, statsd_time};
@@ -11,15 +11,26 @@ use jsonrpsee::{
     proc_macros::rpc,
     types::{error::INVALID_PARAMS_CODE, ErrorObjectOwned},
 };
+use serde::Deserialize;
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
 use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
 use tracing::error;
 
 use crate::{
-    errors::invalid_request, transaction_store::TransactionData, txn_sender::TxnSender,
+    errors::invalid_request,
+    transaction_store::{TransactionData, TransactionStore},
+    txn_sender::TxnSender,
     vendor::solana_rpc::decode_and_deserialize,
 };
+
+// jsonrpsee does not make it easy to access http data,
+// so creating this optional param to pass in metadata
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct RequestMetadata {
+    pub api_key: String,
+}
 
 #[rpc(server)]
 pub trait AtlasTxnSender {
@@ -30,16 +41,27 @@ pub trait AtlasTxnSender {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
+        request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String>;
 }
 
 pub struct AtlasTxnSenderImpl {
     txn_sender: Arc<dyn TxnSender>,
+    transaction_store: Arc<dyn TransactionStore>,
+    max_txn_send_retries: usize,
 }
 
 impl AtlasTxnSenderImpl {
-    pub fn new(txn_sender: Arc<dyn TxnSender>) -> Self {
-        Self { txn_sender }
+    pub fn new(
+        txn_sender: Arc<dyn TxnSender>,
+        transaction_store: Arc<dyn TransactionStore>,
+        max_txn_send_retries: usize,
+    ) -> Self {
+        Self {
+            txn_sender,
+            max_txn_send_retries,
+            transaction_store,
+        }
     }
 }
 
@@ -52,9 +74,14 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
+        request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String> {
-        tracing::debug!("Received transaction: {}", txn);
-        statsd_count!("send_transaction", 1);
+        let sent_at = Instant::now();
+        let api_key = request_metadata
+            .clone()
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
+        statsd_count!("send_transaction", 1, "api_key" => &api_key);
         validate_send_transaction_params(&params)?;
         let start = Instant::now();
         let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
@@ -73,16 +100,27 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
                 }
             };
         let signature = versioned_transaction.signatures[0].to_string();
+        if self.transaction_store.has_signature(&signature) {
+            statsd_count!("duplicate_transaction", 1, "api_key" => &api_key);
+            return Ok(signature);
+        }
         let transaction = TransactionData {
             wire_transaction,
             versioned_transaction,
-            sent_at: Instant::now(),
-            sent_at_unix: SystemTime::now(),
+            sent_at,
             retry_count: 0,
-            max_retries: params.max_retries,
+            max_retries: std::cmp::min(
+                self.max_txn_send_retries,
+                params.max_retries.unwrap_or(self.max_txn_send_retries),
+            ),
+            request_metadata,
         };
         self.txn_sender.send_transaction(transaction);
-        statsd_time!("send_transaction_time", start.elapsed());
+        statsd_time!(
+            "send_transaction_time",
+            start.elapsed(),
+            "api_key" => &api_key
+        );
         Ok(signature)
     }
 }

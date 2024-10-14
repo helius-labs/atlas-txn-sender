@@ -1,0 +1,123 @@
+---
+- name: Check if HAProxy is installed
+  become: true
+  become_user: root
+  command: haproxy -v
+  register: haproxy_installed
+  ignore_errors: true
+
+- name: Install HAProxy 2.8
+  become: true
+  become_user: root
+  shell: |
+    sudo apt install --no-install-recommends software-properties-common -y
+    sudo add-apt-repository ppa:vbernat/haproxy-2.8 -y
+    sudo apt update
+    yes N | sudo apt install haproxy -y
+  when: haproxy_installed is failed
+
+- name: Copy haproxy.cfg to host for testing
+  become: true
+  become_user: root
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy-test.cfg
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Validate HAProxy configuration
+  command: haproxy -c -f /etc/haproxy/haproxy-test.cfg
+  register: result
+  ignore_errors: True
+
+- name: Fail if validation failed
+  fail:
+    msg: "HAProxy configuration is invalid"
+  when: result.rc != 0
+
+- name: Copy haproxy.cfg to host
+  become: true
+  become_user: root
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: 0644
+
+- name: create overrides folder
+  become: true
+  become_user: root
+  file:
+    path: /etc/systemd/system/haproxy.service.d
+    state: directory
+
+- name: Copy limit override
+  become: true
+  become_user: root
+  template:
+    src: limits.cfg
+    dest: /etc/systemd/system/haproxy.service.d/limits.cfg
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Check if datadog is installed
+  command: systemctl status datadog-agent
+  register: datadog_installed
+  ignore_errors: True
+  changed_when: False
+
+- name: Configure HAProxy check for Datadog when present
+  become: true
+  become_user: root
+  when: datadog_installed
+  block:
+    - name: Configure HAProxy check for Datadog
+      template:
+        src: haproxy_conf.yml
+        dest: /etc/datadog-agent/conf.d/haproxy.d/conf.yaml
+        owner: root
+        group: root
+        mode: 0644
+    - name: Grant access to log port
+      shell: sudo setcap CAP_NET_BIND_SERVICE=+ep /opt/datadog-agent/bin/agent/agent
+    - name: Restart datadog-agent
+      systemd:
+        name: datadog-agent
+        state: restarted
+
+- name: Allow access to RPC with HAProxy through port 80
+  become: true
+  become_user: root
+  ansible.builtin.ufw:
+    rule: allow
+    port: 80
+    proto: tcp
+
+- name: Allow access to stats dashboard
+  become: true
+  become_user: root
+  ansible.builtin.ufw:
+    rule: allow
+    port: 4445
+    proto: tcp
+
+- name: reload systemd
+  become: true
+  become_user: root
+  systemd: daemon-reload=true
+  when: haproxy_installed is failed
+
+- name: restart haproxy
+  become: true
+  become_user: root
+  service: name=haproxy state=restarted
+  when: haproxy_installed is failed
+
+- name: reload haproxy
+  become: true
+  become_user: root
+  shell: sudo systemctl reload haproxy
+  when: haproxy_installed is not failed

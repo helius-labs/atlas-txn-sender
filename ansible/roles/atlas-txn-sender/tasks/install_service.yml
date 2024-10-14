@@ -1,0 +1,45 @@
+- name: Check if repo exists
+  stat:
+    path: /home/ubuntu/atlas-txn-sender
+  register: repo_exists
+- name: clone repo
+  become: true
+  become_user: ubuntu
+  command: git clone https://github.com/helius-labs/atlas-txn-sender /home/ubuntu/atlas-txn-sender
+  when: repo_exists.stat.exists == False
+- name: update repo
+  become: true
+  become_user: ubuntu
+  shell: git pull origin main
+  args:
+    chdir: /home/ubuntu/atlas-txn-sender
+- name: Build the program
+  become: true
+  become_user: ubuntu
+  shell: source ~/.profile && cargo build --release -j 4
+  args:
+    chdir: /home/ubuntu/atlas-txn-sender/
+    executable: /bin/bash
+
+- name: copy service template
+  become: true
+  become_user: root
+  template:
+      src: templates/atlas-txn-sender.service.j2
+      dest: /etc/systemd/system/atlas-txn-sender.service
+      owner: root
+      group: root
+      mode: '0755'
+
+- name: Reload Systemd daemon
+  become: true
+  become_user: root
+  shell: sudo systemctl daemon-reload
+- name: enable service
+  become: true
+  become_user: root
+  shell: sudo systemctl enable atlas-txn-sender.service
+- name: start service
+  become: true
+  become_user: root
+  shell: sudo systemctl restart atlas-txn-sender.service

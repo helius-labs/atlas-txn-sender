@@ -1,0 +1,33 @@
+- name: Install a list of packages
+  become: true
+  become_user: root
+  apt:
+    update_cache: yes
+    pkg:
+      - build-essential
+      - pkg-config
+      - libudev-dev
+      - cmake
+      - libclang-dev
+      - libssl-dev
+      - gparted
+      - nload
+      - python3-pip
+      - net-tools
+      - logind
+      - curl
+      - git
+      - chrony
+      - htop
+      - acl
+      - cpufrequtils
+      - libsasl2-dev
+      - libudev-dev 
+      - pkg-config 
+      - zlib1g-dev 
+      - llvm 
+      - clang 
+      - make 
+      - libprotobuf-dev 
+      - protobuf-compiler
+      - cargo

@@ -1,0 +1,33 @@
+---
+- name: check if rust is installed
+  shell: source ~/.profile && rustc --version
+  register: rust_exists
+  ignore_errors: yes
+  become: true
+  become_user: "{{ user|default('root') }}"
+  args:
+        executable: /bin/bash
+
+- name: Install rust
+  when: rust_exists.rc != 0
+  shell: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  become: true
+  become_user: "{{ user|default('root') }}"
+  args:
+        executable: /bin/bash
+
+- name: set default rust version
+  shell: source ~/.profile && rustup default stable
+  become: true
+  become_user: "{{ user|default('root') }}"
+  when: rust_version is not defined and rust_exists.rc == 0
+  args:
+        executable: /bin/bash
+
+- name: set rust version
+  shell: source ~/.profile && rustup default {{ rust_version }}
+  become: true
+  become_user: "{{ user|default('root') }}"
+  when: rust_version is defined and rust_exists.rc == 0
+  args:
+        executable: /bin/bash

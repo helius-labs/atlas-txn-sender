@@ -1,9 +1,6 @@
-use std::{
-    alloc::System,
-    sync::Arc,
-    time::{Instant, SystemTime},
-};
+use std::{sync::Arc, time::Instant};
 
+use crate::rpc_server::RequestMetadata;
 use cadence_macros::{statsd_count, statsd_time};
 use dashmap::DashMap;
 use solana_sdk::transaction::VersionedTransaction;
@@ -14,9 +11,10 @@ pub struct TransactionData {
     pub wire_transaction: Vec<u8>,
     pub versioned_transaction: VersionedTransaction,
     pub sent_at: Instant,
-    pub sent_at_unix: SystemTime,
     pub retry_count: usize,
-    pub max_retries: Option<usize>,
+    pub max_retries: usize,
+    // might not be the best spot but is easy to add for what we need out of metrics now
+    pub request_metadata: Option<RequestMetadata>,
 }
 
 pub trait TransactionStore: Send + Sync {
@@ -24,6 +22,7 @@ pub trait TransactionStore: Send + Sync {
     fn get_signatures(&self) -> Vec<String>;
     fn remove_transaction(&self, signature: String) -> Option<TransactionData>;
     fn get_transactions(&self) -> Arc<DashMap<String, TransactionData>>;
+    fn has_signature(&self, signature: &str) -> bool;
 }
 
 pub struct TransactionStoreImpl {
@@ -40,6 +39,9 @@ impl TransactionStoreImpl {
 }
 
 impl TransactionStore for TransactionStoreImpl {
+    fn has_signature(&self, signature: &str) -> bool {
+        self.transactions.contains_key(signature)
+    }
     fn add_transaction(&self, transaction: TransactionData) {
         let start = Instant::now();
         if let Some(signature) = get_signature(&transaction) {
