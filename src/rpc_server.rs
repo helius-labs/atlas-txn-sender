@@ -1,21 +1,15 @@
-use std::{
-    fmt::Debug,
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant, SystemTime},
-};
+use std::{sync::Arc, time::Instant};
 
 use cadence_macros::{statsd_count, statsd_time};
 use jsonrpsee::{
     core::{async_trait, RpcResult},
     proc_macros::rpc,
-    types::{error::INVALID_PARAMS_CODE, ErrorObjectOwned},
+    types::ErrorObjectOwned,
 };
 use serde::Deserialize;
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
 use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
-use tracing::error;
 
 use crate::{
     errors::invalid_request,
@@ -132,22 +126,4 @@ fn validate_send_transaction_params(
         return Err(invalid_request("running preflight check is not supported"));
     }
     Ok(())
-}
-
-fn param<T: FromStr>(param_str: &str, thing: &str) -> Result<T, ErrorObjectOwned> {
-    param_str.parse::<T>().map_err(|_e| {
-        ErrorObjectOwned::owned(
-            INVALID_PARAMS_CODE,
-            format!("Invalid Request: Invalid {thing} provided"),
-            None::<String>,
-        )
-    })
-}
-
-fn log_error<T: Debug>(metric: &str) -> impl Fn(T) -> T {
-    let metric = metric.to_string();
-    return move |e: T| -> T {
-        error!(metric = metric, "{:?}", e);
-        e
-    };
 }

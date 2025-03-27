@@ -65,7 +65,7 @@ impl GrpcGeyserImpl {
                 let mut grpc_tx;
                 let mut grpc_rx;
                 {
-                    let mut grpc_client = GeyserGrpcClient::connect::<String, String>(
+                    let grpc_client = GeyserGrpcClient::connect::<String, String>(
                         endpoint.clone(),
                         auth_header.clone(),
                         None,
@@ -138,7 +138,7 @@ impl GrpcGeyserImpl {
                 let mut grpc_tx;
                 let mut grpc_rx;
                 {
-                    let mut grpc_client = GeyserGrpcClient::connect::<String, String>(
+                    let grpc_client = GeyserGrpcClient::connect::<String, String>(
                         endpoint.clone(),
                         auth_header.clone(),
                         None,
