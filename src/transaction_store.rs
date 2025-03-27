@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::rpc_server::RequestMetadata;
-use cadence_macros::{statsd_count, statsd_time};
+use cadence_macros::statsd_time;
 use dashmap::DashMap;
 use solana_sdk::transaction::VersionedTransaction;
 use tracing::error;

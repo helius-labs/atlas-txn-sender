@@ -5,7 +5,6 @@ mod rpc_server;
 mod solana_rpc;
 mod transaction_store;
 mod txn_sender;
-mod utils;
 mod vendor;
 
 use std::{
@@ -24,11 +23,9 @@ use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
 use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
 use solana_sdk::signature::{read_keypair_file, Keypair};
-use tokio::sync::RwLock;
 use tracing::{error, info};
 use transaction_store::TransactionStoreImpl;
 use txn_sender::TxnSenderImpl;
-use yellowstone_grpc_client::GeyserGrpcClient;
 
 #[derive(Debug, Deserialize)]
 struct AtlasTxnSenderEnv {

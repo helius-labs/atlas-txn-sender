@@ -3,17 +3,17 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::{self, VersionedTransaction};
+use solana_sdk::transaction::VersionedTransaction;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
     runtime::{Builder, Runtime},
-    time::{error::Elapsed, sleep, timeout},
+    time::{sleep, timeout},
 };
 use tonic::async_trait;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use crate::{
     leader_tracker::LeaderTracker,
@@ -134,7 +134,7 @@ impl TxnSenderImpl {
                         txn_sender_runtime.spawn(async move {
                         // retry unless its a timeout
                         for i in 0..SEND_TXN_RETRIES {
-                            let conn = connection_cache
+                            let conn = connection_cache 
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
                             if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
                                 if let Err(e) = result {
@@ -211,7 +211,7 @@ impl TxnSenderImpl {
 
             // Collect metrics
             // We separate the retry metrics to reduce the cardinality with API key and price.
-            let landed = if let Some(confirmed_at) = confirmed_at {
+            let landed = if let Some(_) = confirmed_at {
                 statsd_count!("transactions_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
                 statsd_count!("transactions_landed_by_key", 1, "api_key" => &api_key);
                 statsd_time!("transaction_land_time", sent_at.elapsed(), "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
@@ -238,7 +238,7 @@ pub struct PriorityDetails {
 pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityDetails {
     let mut cu_limit = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
     let mut compute_budget = ComputeBudget::new(DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT as u64);
-    if let Err(e) = transaction.sanitize() {
+    if let Err(_e) = transaction.sanitize() {
         return PriorityDetails {
             fee: 0,
             priority: 0,
@@ -268,7 +268,7 @@ pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityD
             priority: compute_budget.get_priority(),
             cu_limit,
         },
-        Err(e) => PriorityDetails {
+        Err(_e) => PriorityDetails {
             fee: 0,
             priority: 0,
             cu_limit,
