@@ -1,16 +1,16 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cadence_macros::statsd_count;
 use dashmap::DashMap;
 use futures::sink::SinkExt;
-use futures::StreamExt;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use solana_sdk::clock::UnixTimestamp;
 use solana_sdk::signature::Signature;
 use tokio::time::sleep;
+use tokio_stream::StreamExt;
 use tonic::async_trait;
 use tracing::error;
 use yellowstone_grpc_client::GeyserGrpcClient;
@@ -21,6 +21,8 @@ use yellowstone_grpc_proto::geyser::{
 };
 
 use crate::solana_rpc::SolanaRpc;
+
+const TIMEOUT_DURATION: Duration = Duration::from_secs(5);
 
 pub struct GrpcGeyserImpl {
     endpoint: String,
@@ -88,16 +90,30 @@ impl GrpcGeyserImpl {
                     }
                     (grpc_tx, grpc_rx) = subscription.unwrap();
                 }
-                while let Some(message) = grpc_rx.next().await {
+
+                let mut blockstream = grpc_rx.take_while(Result::is_ok);
+
+                while let message = blockstream.try_next().await {
                     match message {
-                        Ok(message) => match message.update_oneof {
+                        Ok(Some(message)) => match message.update_oneof {
                             Some(UpdateOneof::Block(block)) => {
-                                let block_time = block.block_time.unwrap().timestamp;
-                                for transaction in block.transactions {
+                                let block_time = block.block_time.clone().unwrap().timestamp;
+                                for transaction in &block.transactions {
                                     let signature =
                                         Signature::new(&transaction.signature).to_string();
                                     signature_cache.insert(signature, (block_time, Instant::now()));
                                 }
+                                tracing::info!(
+                                    "grpc_block_received: slot: {}, height: {:?}, blocktime: {:?}, ts: {}, with {} transactions",
+                                    block.slot,
+                                    block.block_height,
+                                    block.block_time,
+                                    SystemTime::now()
+                                        .duration_since(SystemTime::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs(),
+                                    block.transactions.len()
+                                );
                             }
                             Some(UpdateOneof::Ping(_)) => {
                                 // This is necessary to keep load balancers that expect client pings alive. If your load balancer doesn't
@@ -114,10 +130,12 @@ impl GrpcGeyserImpl {
                                 error!("Unknown message: {:?}", message);
                             }
                         },
-                        Err(error) => {
-                            error!(
-                                "error in block subscribe, resubscribing in 1 second: {error:?}"
-                            );
+                        Ok(None) => {
+                            error!("Stream has terminated unexpectedly, restarting...");
+                            break;
+                        }
+                        Err(_) => {
+                            error!("No blocks received in the last 5 seconds, restarting...");
                             statsd_count!("grpc_resubscribe", 1);
                             break;
                         }

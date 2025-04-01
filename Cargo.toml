@@ -44,6 +44,7 @@ futures-channel = "0.3.30"
 futures-sink = "0.3.30"
 rand = "0.8.5"
 indexmap = "2.2.5"
+tokio-stream = "0.1.15"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.5"
