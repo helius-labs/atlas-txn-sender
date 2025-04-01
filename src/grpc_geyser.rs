@@ -12,7 +12,7 @@ use solana_sdk::clock::UnixTimestamp;
 use solana_sdk::signature::Signature;
 use tokio::time::sleep;
 use tonic::async_trait;
-use tracing::error;
+use tracing::{error, info, warn};
 use yellowstone_grpc_client::GeyserGrpcClient;
 use yellowstone_grpc_proto::geyser::SubscribeRequestFilterBlocks;
 use yellowstone_grpc_proto::geyser::{
@@ -94,9 +94,20 @@ impl GrpcGeyserImpl {
                             Some(UpdateOneof::Block(block)) => {
                                 let block_time = block.block_time.unwrap().timestamp;
                                 for transaction in block.transactions {
-                                    let signature =
-                                        Signature::new(&transaction.signature).to_string();
-                                    signature_cache.insert(signature, (block_time, Instant::now()));
+                                    if let Some(meta) = &transaction.meta {
+                                        // Check if execution was successful (no error)
+                                        if meta.err.is_none() {
+                                            // ONLY cache if successful, no errors in txn
+                                            let signature =
+                                                Signature::new(&transaction.signature).to_string();
+                                            signature_cache
+                                                .insert(signature, (block_time, Instant::now()));
+                                        } else {
+                                            // info!("Transaction failed on chain");
+                                        }
+                                    } else {
+                                        warn!("Missing metadata for transaction in confirmed block");
+                                    }
                                 }
                             }
                             Some(UpdateOneof::Ping(_)) => {
