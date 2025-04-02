@@ -21,6 +21,8 @@ use crate::{errors::AtlasTxnSenderError, solana_rpc::SolanaRpc};
 pub trait LeaderTracker: Send + Sync {
     /// get_leaders returns the next slot leaders in order
     fn get_leaders(&self) -> Vec<RpcContactInfo>;
+    /// get_current_slot returns the latest slot observed by the tracker
+    fn get_current_slot(&self) -> Option<u64>;
 }
 
 const NUM_LEADERS_PER_SLOT: usize = 4;
@@ -170,5 +172,13 @@ impl LeaderTracker for LeaderTrackerImpl {
             .into_iter()
             .map(|v| v.to_owned())
             .collect()
+    }
+    fn get_current_slot(&self) -> Option<u64> {
+        let slot = self.cur_slot.load(Ordering::Relaxed);
+        if slot == 0 {
+            None
+        } else {
+            Some(slot)
+        }
     }
 }

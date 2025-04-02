@@ -12,7 +12,7 @@ use solana_sdk::clock::UnixTimestamp;
 use solana_sdk::signature::Signature;
 use tokio::time::sleep;
 use tonic::async_trait;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 use yellowstone_grpc_client::GeyserGrpcClient;
 use yellowstone_grpc_proto::geyser::SubscribeRequestFilterBlocks;
 use yellowstone_grpc_proto::geyser::{
@@ -22,11 +22,14 @@ use yellowstone_grpc_proto::geyser::{
 
 use crate::solana_rpc::SolanaRpc;
 
+const BLOCKHASH_CACHE_EXPIRY_SLOTS: u64 = 250;
+
 pub struct GrpcGeyserImpl {
     endpoint: String,
     auth_header: Option<String>,
     cur_slot: Arc<AtomicU64>,
     signature_cache: Arc<DashMap<String, (UnixTimestamp, Instant)>>,
+    blockhash_slot_cache: Arc<DashMap<String, u64>>,
 }
 
 impl GrpcGeyserImpl {
@@ -36,12 +39,14 @@ impl GrpcGeyserImpl {
             auth_header,
             cur_slot: Arc::new(AtomicU64::new(0)),
             signature_cache: Arc::new(DashMap::new()),
+            blockhash_slot_cache: Arc::new(DashMap::new()),
         };
         // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
         // polling with confirmed commitment to get confirmed transactions
         grpc_geyser.poll_blocks();
         grpc_geyser.clean_signature_cache();
+        grpc_geyser.clean_blockhash_cache();
         grpc_geyser
     }
 
@@ -55,11 +60,44 @@ impl GrpcGeyserImpl {
             }
         });
     }
+    fn clean_blockhash_cache(&self) {
+        let blockhash_slot_cache = self.blockhash_slot_cache.clone();
+        let cur_slot = self.cur_slot.clone(); // Need current slot to prune effectively
+        tokio::spawn(async move {
+            loop {
+                sleep(Duration::from_secs(30)).await; // Prune blockhash cache every 30 seconds
+
+                let current_slot = cur_slot.load(Ordering::Relaxed);
+                if current_slot == 0 {
+                    // Don't prune if we don't have a current slot yet
+                    continue;
+                }
+
+                let initial_size = blockhash_slot_cache.len();
+                if initial_size > 0 {
+                    blockhash_slot_cache.retain(|_blockhash, entry_slot| {
+                        current_slot <= *entry_slot
+                            || current_slot - *entry_slot < BLOCKHASH_CACHE_EXPIRY_SLOTS
+                    });
+                    let final_size = blockhash_slot_cache.len();
+                    if initial_size != final_size {
+                        // info!(
+                        //     "Pruned blockhash cache from {} to {} entries based on current slot {}",
+                        //     initial_size, final_size, current_slot
+                        // );
+                        statsd_count!("blockhash_cache_pruned", (initial_size - final_size) as i64);
+                    }
+                    statsd_count!("blockhash_cache_size", final_size as i64);
+                }
+            }
+        });
+    }
 
     fn poll_blocks(&self) {
         let endpoint = self.endpoint.clone();
         let auth_header = self.auth_header.clone();
         let signature_cache = self.signature_cache.clone();
+        let blockhash_slot_cache = self.blockhash_slot_cache.clone();
         tokio::spawn(async move {
             loop {
                 let mut grpc_tx;
@@ -93,6 +131,11 @@ impl GrpcGeyserImpl {
                         Ok(message) => match message.update_oneof {
                             Some(UpdateOneof::Block(block)) => {
                                 let block_time = block.block_time.unwrap().timestamp;
+                                let block_slot = block.slot;
+                                let blockhash = block.blockhash.clone();
+
+                                // Add blockhash -> slot mapping to cache
+                                blockhash_slot_cache.insert(blockhash, block_slot);
                                 for transaction in block.transactions {
                                     if let Some(meta) = &transaction.meta {
                                         // Check if execution was successful (no error)
@@ -106,7 +149,9 @@ impl GrpcGeyserImpl {
                                             // info!("Transaction failed on chain");
                                         }
                                     } else {
-                                        warn!("Missing metadata for transaction in confirmed block");
+                                        warn!(
+                                            "Missing metadata for transaction in confirmed block"
+                                        );
                                     }
                                 }
                             }
@@ -225,6 +270,11 @@ impl SolanaRpc for GrpcGeyserImpl {
             return None;
         }
         Some(cur_slot)
+    }
+    fn get_slot_for_blockhash(&self, blockhash: &str) -> Option<u64> {
+        self.blockhash_slot_cache
+            .get(blockhash)
+            .map(|entry| *entry.value())
     }
 }
 
