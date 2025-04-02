@@ -33,6 +33,7 @@ const SEND_TXN_RETRIES: usize = 10;
 #[async_trait]
 pub trait TxnSender: Send + Sync {
     fn send_transaction(&self, txn: TransactionData);
+    async fn confirm_transaction(&self, txn: &TransactionData)-> Option<i64>;
 }
 
 pub struct TxnSenderImpl {
@@ -324,6 +325,17 @@ impl TxnSender for TxnSenderImpl {
             });
             leader_num += 1;
         }
+    }
+    async fn confirm_transaction(&self, transaction_data: &TransactionData)-> Option<i64> {
+        let signature = get_signature(transaction_data);
+        if signature.is_none() {
+            return None;
+        }
+        let signature = signature.unwrap();
+        let solana_rpc = self.solana_rpc.clone();
+        let confirmed_at = solana_rpc.confirm_transaction(signature).await;
+        
+        confirmed_at
     }
 }
 
