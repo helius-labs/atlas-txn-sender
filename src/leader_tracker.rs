@@ -80,8 +80,16 @@ impl LeaderTrackerImpl {
             loop {
                 let start = Instant::now();
                 if let Err(e) = self_clone.poll_slot_leaders_once() {
-                    error!("Error polling slot leaders: {}", e);
-                    sleep(Duration::from_secs(1)).await;
+                    match e {
+                        AtlasTxnSenderError::NoStartSlot => {
+                            info!("Slot has not yet arrived from gRPC, trying again in 200ms");
+                            sleep(Duration::from_millis(200)).await;
+                        }
+                        _ => {
+                            error!("Error polling slot leaders: {}", e);
+                            sleep(Duration::from_secs(1)).await;
+                        }
+                    }
                     continue;
                 }
                 statsd_time!("poll_slot_leaders", start.elapsed());
@@ -92,6 +100,9 @@ impl LeaderTrackerImpl {
 
     fn poll_slot_leaders_once(&self) -> Result<(), AtlasTxnSenderError> {
         let next_slot = self.cur_slot.load(Ordering::Relaxed);
+        if next_slot == 0 {
+            return Err(AtlasTxnSenderError::NoStartSlot);
+        }
         debug!("Polling slot leaders for slot {}", next_slot);
         // polling 1000 slots ahead is more than enough
         let slot_leaders = self.rpc_client.get_slot_leaders(next_slot, 1000);
@@ -118,6 +129,11 @@ impl LeaderTrackerImpl {
             }
         }
         self.clean_up_slot_leaders();
+        info!(
+            "Got leaders for slots {} to {}",
+            next_slot,
+            next_slot + slot_leaders.len() as u64
+        );
         Ok(())
     }
 

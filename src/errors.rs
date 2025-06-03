@@ -13,6 +13,7 @@ pub fn invalid_request(reason: &str) -> ErrorObjectOwned {
 #[derive(Debug)]
 pub enum AtlasTxnSenderError {
     Custom(String),
+    NoStartSlot,
 }
 
 impl Error for AtlasTxnSenderError {}
@@ -21,6 +22,9 @@ impl std::fmt::Display for AtlasTxnSenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             AtlasTxnSenderError::Custom(msg) => write!(f, "{}", msg),
+            AtlasTxnSenderError::NoStartSlot => {
+                write!(f, "Slot has not yet arrived from gRPC")
+            }
         }
     }
 }
