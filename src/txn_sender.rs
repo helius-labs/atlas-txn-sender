@@ -3,7 +3,12 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::VersionedTransaction;
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    signature::Signature,
+    transaction::{TransactionError, VersionedTransaction},
+    transport::TransportError,
+};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -32,7 +37,11 @@ const SEND_TXN_RETRIES: usize = 10;
 
 #[async_trait]
 pub trait TxnSender: Send + Sync {
-    fn send_transaction(&self, txn: TransactionData);
+    fn send_transaction(&self, txn: TransactionData) -> Result<Signature, TransportError>;
+    fn send_transaction_bundle(
+        &self,
+        txn_data_bundle: Vec<TransactionData>,
+    ) -> Result<Vec<Signature>, TransportError>;
 }
 
 pub struct TxnSenderImpl {
@@ -227,6 +236,48 @@ impl TxnSenderImpl {
             statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
         });
     }
+
+    // Validate if transaction is confirmed/finalized and successful
+    fn transaction_confirmed_or_finalized_and_successful(
+        &self,
+        txn_signer_signature: &Signature,
+    ) -> bool {
+        let txn_confirmed = self.leader_tracker.transaction_committed_and_successful(
+            txn_signer_signature,
+            CommitmentConfig::confirmed(),
+        );
+        let txn_finalized = self.leader_tracker.transaction_committed_and_successful(
+            txn_signer_signature,
+            CommitmentConfig::finalized(),
+        );
+
+        !txn_confirmed && !txn_finalized
+    }
+
+    fn preflight_checks(&self, transaction: &VersionedTransaction) -> Result<(), TransactionError> {
+        // Verify that all signers have signed the message
+        let all_txn_signatures = transaction.verify_with_results();
+        for signed in all_txn_signatures {
+            if !signed {
+                return Err(TransactionError::SignatureFailure);
+            }
+        }
+
+        // Verify blockhash validity
+        let txn_blockhash = transaction.message.recent_blockhash();
+        let valid_txn_blockhash_confirmed = self
+            .leader_tracker
+            .check_blockhash_validity(txn_blockhash, CommitmentConfig::confirmed());
+        let valid_finalized_txn_blockhash = self
+            .leader_tracker
+            .check_blockhash_validity(txn_blockhash, CommitmentConfig::finalized());
+
+        if !valid_txn_blockhash_confirmed && !valid_finalized_txn_blockhash {
+            return Err(TransactionError::BlockhashNotFound);
+        }
+
+        Ok(())
+    }
 }
 
 pub struct PriorityDetails {
@@ -278,21 +329,65 @@ pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityD
 
 #[async_trait]
 impl TxnSender for TxnSenderImpl {
-    fn send_transaction(&self, transaction_data: TransactionData) {
+    fn send_transaction(
+        &self,
+        transaction_data: TransactionData,
+    ) -> Result<Signature, TransportError> {
         self.track_transaction(&transaction_data);
+
+        // On-chain verification: Validate transaction signature, message integrity and blockhash
+        let on_chain_verification = || match transaction_data
+            .versioned_transaction
+            .verify_and_hash_message()
+        {
+            Ok(blockhash) => {
+                let valid_confirmed_blockhash = self
+                    .leader_tracker
+                    .check_blockhash_validity(&blockhash, CommitmentConfig::confirmed());
+                let valid_finalized_blockhash = self
+                    .leader_tracker
+                    .check_blockhash_validity(&blockhash, CommitmentConfig::finalized());
+
+                Ok(!valid_confirmed_blockhash && !valid_finalized_blockhash)
+            }
+            Err(e) => return Err(e),
+        };
+
+        let signer_signature = transaction_data
+            .versioned_transaction
+            .signatures
+            .get(0)
+            .expect("signer signature is expected to be present");
+
         let api_key = transaction_data
             .request_metadata
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
         let mut leader_num = 0;
+        let mut transaction_confirmed_or_finalized = false;
+
         for leader in self.leader_tracker.get_leaders() {
+            // Don't send transactions to rest of the leaders if it is confirmed/finalized and successful
+            if self.transaction_confirmed_or_finalized_and_successful(signer_signature) {
+                transaction_confirmed_or_finalized = true;
+                break;
+            }
+
+            if !on_chain_verification()? {
+                return Err(TransportError::Custom(
+                    "Transaction failed on-chain verification".to_string(),
+                ));
+            }
+
             if leader.tpu_quic.is_none() {
                 error!("leader {:?} has no tpu_quic", leader);
                 continue;
             }
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
+
             let api_key = api_key.clone();
+
             self.txn_sender_runtime.spawn(async move {
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
@@ -312,8 +407,9 @@ impl TxnSender for TxnSenderImpl {
                         } else {
                             let leader_num_str = leader_num.to_string();
                             statsd_time!(
-                                "transaction_received_by_leader",
-                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
+                            "transaction_received_by_leader",
+                            transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
+
                             return;
                         }
                     } else {
@@ -324,6 +420,52 @@ impl TxnSender for TxnSenderImpl {
             });
             leader_num += 1;
         }
+
+        if transaction_confirmed_or_finalized {
+            Ok(*signer_signature)
+        } else {
+            Err(TransportError::Custom(
+                "Send Transaction failed".to_string(),
+            ))
+        }
+    }
+
+    fn send_transaction_bundle(
+        &self,
+        transaction_data_bundle: Vec<TransactionData>,
+    ) -> Result<Vec<Signature>, TransportError> {
+        let mut successful_txn_signatures: Vec<Signature> = Vec::new();
+        let mut prev_transaction: Option<TransactionData> = None;
+
+        for curr_txn_data in transaction_data_bundle {
+            if let Some(ref prev_txn) = prev_transaction {
+                let prev_txn_signer_signature =
+                    if let Some(sign) = prev_txn.versioned_transaction.signatures.get(0) {
+                        sign
+                    } else {
+                        return Err(TransportError::TransactionError(
+                            TransactionError::SignatureFailure,
+                        ));
+                    };
+
+                if !self
+                    .transaction_confirmed_or_finalized_and_successful(prev_txn_signer_signature)
+                {
+                    return Err(TransportError::Custom(
+                        "Previous transaction is not confirmed/finalized and successful"
+                            .to_string(),
+                    ));
+                }
+            }
+
+            self.preflight_checks(&curr_txn_data.versioned_transaction)?;
+
+            let curr_txn_signature = self.send_transaction(curr_txn_data.clone())?;
+            successful_txn_signatures.push(curr_txn_signature);
+            prev_transaction = Some(curr_txn_data);
+        }
+
+        Ok(successful_txn_signatures)
     }
 }
 
