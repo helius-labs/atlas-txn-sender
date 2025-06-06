@@ -12,7 +12,9 @@ use dashmap::DashMap;
 use indexmap::IndexMap;
 use solana_client::rpc_client::RpcClient;
 use solana_rpc_client_api::response::RpcContactInfo;
-use solana_sdk::slot_history::Slot;
+use solana_sdk::{
+    commitment_config::CommitmentConfig, hash::Hash, signature::Signature, slot_history::Slot,
+};
 use tokio::time::sleep;
 use tracing::{debug, error, info};
 
@@ -21,6 +23,12 @@ use crate::{errors::AtlasTxnSenderError, solana_rpc::SolanaRpc};
 pub trait LeaderTracker: Send + Sync {
     /// get_leaders returns the next slot leaders in order
     fn get_leaders(&self) -> Vec<RpcContactInfo>;
+    fn transaction_committed_and_successful(
+        &self,
+        signature: &Signature,
+        commitment_config: CommitmentConfig,
+    ) -> bool;
+    fn check_blockhash_validity(&self, blockhash: &Hash, commitment: CommitmentConfig) -> bool;
 }
 
 const NUM_LEADERS_PER_SLOT: usize = 4;
@@ -170,5 +178,32 @@ impl LeaderTracker for LeaderTrackerImpl {
             .into_iter()
             .map(|v| v.to_owned())
             .collect()
+    }
+
+    // Returns true if transaction is successful and committed with the supplied commitment level, otherwise returns false
+    fn transaction_committed_and_successful(
+        &self,
+        signature: &Signature,
+        commitment: CommitmentConfig,
+    ) -> bool {
+        let txn_confirmation = self
+            .rpc_client
+            .confirm_transaction_with_commitment(signature, commitment)
+            .map(|resp| resp.value);
+
+        if let Ok(confirmation) = txn_confirmation {
+            confirmation
+        } else {
+            // Assume txn is not confirmed if there are any errors
+            false
+        }
+    }
+
+    fn check_blockhash_validity(&self, blockhash: &Hash, commitment: CommitmentConfig) -> bool {
+        if let Ok(res) = self.rpc_client.is_blockhash_valid(blockhash, commitment) {
+            res
+        } else {
+            false
+        }
     }
 }
