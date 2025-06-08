@@ -1,11 +1,22 @@
 use std::error::Error;
 
-use jsonrpsee::types::{error::INVALID_PARAMS_CODE, ErrorObjectOwned};
+use jsonrpsee::types::{
+    error::{INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE},
+    ErrorObjectOwned,
+};
 
 pub fn invalid_request(reason: &str) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(
         INVALID_PARAMS_CODE,
         format!("Invalid Request: {reason}"),
+        None::<String>,
+    )
+}
+
+pub fn internal_error(reason: &str) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(
+        INTERNAL_ERROR_CODE,
+        format!("Internal Error: {reason}"),
         None::<String>,
     )
 }

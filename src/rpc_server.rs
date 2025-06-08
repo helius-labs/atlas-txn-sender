@@ -12,7 +12,7 @@ use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
 
 use crate::{
-    errors::invalid_request,
+    errors::{internal_error, invalid_request},
     transaction_store::{TransactionData, TransactionStore},
     txn_sender::TxnSender,
     vendor::solana_rpc::decode_and_deserialize,
@@ -109,13 +109,27 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             ),
             request_metadata,
         };
-        self.txn_sender.send_transaction(transaction);
+
+        let transactions = vec![transaction];
+        let signatures = match self.txn_sender.send_transaction_bundle(transactions) {
+            Ok(signs) => {
+                let comma_delimited_signatures = signs
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",");
+
+                comma_delimited_signatures
+            }
+            Err(e) => return Err(internal_error(&e.to_string())),
+        };
+
         statsd_time!(
             "send_transaction_time",
             start.elapsed(),
             "api_key" => &api_key
         );
-        Ok(signature)
+        Ok(signatures)
     }
 }
 
