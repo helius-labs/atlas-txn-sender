@@ -177,6 +177,7 @@ impl TxnSenderImpl {
     fn track_transaction(&self, transaction_data: &TransactionData) {
         let sent_at = transaction_data.sent_at.clone();
         let signature = get_signature(transaction_data);
+        info!("Tracking transaction {:?}", signature);
         if signature.is_none() {
             return;
         }
