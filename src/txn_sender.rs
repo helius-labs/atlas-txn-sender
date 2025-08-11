@@ -33,6 +33,7 @@ const SEND_TXN_RETRIES: usize = 10;
 #[async_trait]
 pub trait TxnSender: Send + Sync {
     fn send_transaction(&self, txn: TransactionData);
+    async fn send_transactions(&self, txns: Vec<TransactionData>)-> Result<(), TransactionData>;
 }
 
 pub struct TxnSenderImpl {
@@ -325,6 +326,21 @@ impl TxnSender for TxnSenderImpl {
             leader_num += 1;
         }
     }
+
+     async fn send_transactions(&self, transactions: Vec<TransactionData>) -> Result<(), TransactionData> {
+        for transaction in transactions {
+            let Some(signature) = get_signature(&transaction) else {
+                return Err(transaction);
+            };
+            self.send_transaction(transaction.clone());
+            if self.solana_rpc.confirm_transaction(signature).await.is_none() {
+                return Err(transaction);
+            }
+        }
+
+        Ok(())
+    }
+
 }
 
 fn bin_counter_to_tag(counter: Option<i32>, bins: &Vec<i32>) -> String {

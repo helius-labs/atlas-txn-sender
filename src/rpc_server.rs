@@ -37,6 +37,13 @@ pub trait AtlasTxnSender {
         params: RpcSendTransactionConfig,
         request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String>;
+    #[method(name = "sendTransactionBundle")]
+    async fn send_transaction_bundle(
+        &self,
+        txns: Vec<String>,
+        params: RpcSendTransactionConfig,
+        request_metadata: Option<RequestMetadata>,
+    ) -> RpcResult<String>;
 }
 
 pub struct AtlasTxnSenderImpl {
@@ -116,6 +123,84 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             "api_key" => &api_key
         );
         Ok(signature)
+    }
+
+    async fn send_transaction_bundle(
+        &self,
+        txns: Vec<String>,
+        params: RpcSendTransactionConfig,
+        request_metadata: Option<RequestMetadata>,
+    ) -> RpcResult<String> {
+        let sent_at = Instant::now();
+        let api_key = request_metadata
+            .clone()
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
+        statsd_count!("send_transaction", 1, "api_key" => &api_key);
+        validate_send_transaction_params(&params)?;
+        let start = Instant::now();
+        let encoding = params.encoding.unwrap_or(UiTransactionEncoding::Base58);
+        let binary_encoding = encoding.into_binary_encoding().ok_or_else(|| {
+            invalid_request(&format!(
+                "unsupported encoding: {encoding}. Supported encodings: base58, base64"
+            ))
+        })?;
+        let transactions: Result<Vec<TransactionData>, _> = txns
+            .into_iter()
+            .map(|txn| {
+                let (wire_transaction, versioned_transaction) =
+                    match decode_and_deserialize::<VersionedTransaction>(txn, binary_encoding) {
+                        Ok((wire_transaction, versioned_transaction)) => {
+                            (wire_transaction, versioned_transaction)
+                        }
+                        Err(e) => {
+                            return Err(invalid_request(&e.to_string()));
+                        }
+                    };
+                Ok(TransactionData {
+                    wire_transaction,
+                    versioned_transaction,
+                    sent_at,
+                    retry_count: 0,
+                    max_retries: std::cmp::min(
+                        self.max_txn_send_retries,
+                        params.max_retries.unwrap_or(self.max_txn_send_retries),
+                    ),
+                    request_metadata: request_metadata.clone(),
+                })
+            })
+            .filter(|x| {
+                let Ok(x) = x else {
+                    return true;
+                };
+
+                let signature = x.versioned_transaction.signatures[0].to_string();
+                if self.transaction_store.has_signature(&signature) {
+                    statsd_count!("duplicate_transaction", 1, "api_key" => &api_key);
+                    return false;
+                }
+                true
+            })
+            .collect();
+        let transactions = match transactions {
+            Ok(txs) => txs,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+        let result = Ok(transactions[0].versioned_transaction.signatures[0].to_string());
+        if let Err(err) = self.txn_sender.send_transactions(transactions).await {
+            return Err(invalid_request(&format!(
+                "Failed to send transaction with signature: {}",
+                err.versioned_transaction.signatures[0]
+            )));
+        }
+        statsd_time!(
+            "send_transaction_time",
+            start.elapsed(),
+            "api_key" => &api_key
+        );
+        result
     }
 }
 
