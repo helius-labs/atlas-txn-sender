@@ -13,6 +13,7 @@ use solana_transaction_status::UiTransactionEncoding;
 
 use crate::{
     errors::invalid_request,
+    solana_rpc,
     transaction_store::{TransactionData, TransactionStore},
     txn_sender::TxnSender,
     vendor::solana_rpc::decode_and_deserialize,
@@ -37,12 +38,20 @@ pub trait AtlasTxnSender {
         params: RpcSendTransactionConfig,
         request_metadata: Option<RequestMetadata>,
     ) -> RpcResult<String>;
+    #[method(name = "sendTransactionBundle")]
+    async fn send_transaction_bundle(
+        &self,
+        txn: String,
+        params: Vec<RpcSendTransactionConfig>,
+        request_metadata: Option<RequestMetadata>,
+    ) -> RpcResult<Vec<String>>;
 }
 
 pub struct AtlasTxnSenderImpl {
     txn_sender: Arc<dyn TxnSender>,
     transaction_store: Arc<dyn TransactionStore>,
     max_txn_send_retries: usize,
+    grpc_client: Arc<dyn solana_rpc::SolanaRpc>,
 }
 
 impl AtlasTxnSenderImpl {
@@ -50,11 +59,13 @@ impl AtlasTxnSenderImpl {
         txn_sender: Arc<dyn TxnSender>,
         transaction_store: Arc<dyn TransactionStore>,
         max_txn_send_retries: usize,
+        grpc_client: Arc<dyn solana_rpc::SolanaRpc>,
     ) -> Self {
         Self {
             txn_sender,
             max_txn_send_retries,
             transaction_store,
+            grpc_client,
         }
     }
 }
@@ -116,6 +127,81 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
             "api_key" => &api_key
         );
         Ok(signature)
+    }
+
+    async fn send_transaction_bundle(
+        &self,
+        txn: String,
+        params: Vec<RpcSendTransactionConfig>,
+        request_metadata: Option<RequestMetadata>,
+    ) -> RpcResult<Vec<String>> {
+        let sent_at = Instant::now();
+        let api_key = request_metadata
+            .clone()
+            .map(|m| m.api_key)
+            .unwrap_or("none".to_string());
+        statsd_count!("send_transaction_bundle", 1, "api_key" => &api_key);
+
+        // validate each transaction in the bundle
+        params
+            .iter()
+            .try_for_each(validate_send_transaction_params)?;
+
+        let start = Instant::now();
+
+        // construct all transactions in the bundle
+        let transactions = params
+            .into_iter()
+            .map(|param| {
+                let encoding = param.encoding.unwrap_or(UiTransactionEncoding::Base58);
+                let binary_encoding = encoding.into_binary_encoding().ok_or_else(|| {
+                    invalid_request(&format!(
+                        "unsupported encoding: {encoding}. Supported encodings: base58, base64"
+                    ))
+                })?;
+                decode_and_deserialize::<VersionedTransaction>(txn.clone(), binary_encoding)
+                    .map_err(|err| invalid_request(&err.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut result = Vec::with_capacity(transactions.len());
+        for (wire_transaction, mut versioned_transaction) in transactions {
+            let signature = versioned_transaction.signatures[0].to_string();
+            if self.transaction_store.has_signature(&signature) {
+                statsd_count!("duplicate_transaction", 1, "api_key" => &api_key);
+                continue;
+            }
+            // assign recent blockhash before sending
+            if let Some(recent_blockhash) = self.grpc_client.get_recent_blockhash().await {
+                versioned_transaction
+                    .message
+                    .set_recent_blockhash(recent_blockhash);
+            }
+
+            result.push(signature.clone());
+
+            // create transaction data and send to txn sender. Wait for confirmation here
+            let transaction = TransactionData {
+                wire_transaction,
+                versioned_transaction,
+                sent_at,
+                retry_count: 0,
+                max_retries: self.max_txn_send_retries,
+                request_metadata: request_metadata.clone(),
+            };
+            self.txn_sender.send_transaction(transaction);
+            self.grpc_client
+                .confirm_transaction(signature)
+                .await
+                .ok_or_else(|| invalid_request("Failed to confirm transaction"))?;
+        }
+
+        statsd_time!(
+            "send_transaction_bundle_time",
+            start.elapsed(),
+            "api_key" => &api_key
+        );
+        Ok(result)
     }
 }
 

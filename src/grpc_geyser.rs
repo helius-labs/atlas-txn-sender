@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -27,6 +28,7 @@ pub struct GrpcGeyserImpl {
     auth_header: Option<String>,
     cur_slot: Arc<AtomicU64>,
     signature_cache: Arc<DashMap<String, (UnixTimestamp, Instant)>>,
+    recent_blockhash: Arc<tokio::sync::RwLock<String>>,
 }
 
 impl GrpcGeyserImpl {
@@ -36,11 +38,15 @@ impl GrpcGeyserImpl {
             auth_header,
             cur_slot: Arc::new(AtomicU64::new(0)),
             signature_cache: Arc::new(DashMap::new()),
+            recent_blockhash: Arc::new(tokio::sync::RwLock::new(String::new())),
         };
         // polling with processed commitment to get latest leaders
         grpc_geyser.poll_slots();
         // polling with confirmed commitment to get confirmed transactions
         grpc_geyser.poll_blocks();
+
+        grpc_geyser.poll_latest_blockhash();
+
         grpc_geyser.clean_signature_cache();
         grpc_geyser
     }
@@ -193,6 +199,43 @@ impl GrpcGeyserImpl {
             }
         });
     }
+
+    /// poll_latest_blockhash continuously polls the latest blockhash from the gRPC geyser
+    /// and updates the recent_blockhash field
+    fn poll_latest_blockhash(&self) {
+        let endpoint = self.endpoint.clone();
+        let auth_header = self.auth_header.clone();
+        let recent_blockhash = self.recent_blockhash.clone();
+        tokio::spawn(async move {
+            loop {
+                let grpc_client = GeyserGrpcClient::connect::<String, String>(
+                    endpoint.clone(),
+                    auth_header.clone(),
+                    None,
+                );
+                let mut grpc_client = match grpc_client {
+                    Ok(client) => client,
+                    Err(e) => {
+                        error!("Error subscribing to gRPC stream, waiting one second then retrying connect: {}", e);
+                        statsd_count!("grpc_subscribe_error", 1);
+                        sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
+                let result = grpc_client.get_latest_blockhash(None).await;
+                match result {
+                    Ok(response) => {
+                        *recent_blockhash.write().await = response.blockhash;
+                    }
+                    Err(e) => {
+                        error!("Error getting latest blockhash from gRPC, waiting one second then retrying: {}", e);
+                        statsd_count!("grpc_get_latest_blockhash_error", 1);
+                    }
+                }
+                sleep(Duration::from_secs(1)).await;
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -208,6 +251,12 @@ impl SolanaRpc for GrpcGeyserImpl {
         }
         return None;
     }
+
+    async fn get_recent_blockhash(&self) -> Option<solana_sdk::hash::Hash> {
+        let blockhash = self.recent_blockhash.read().await.clone();
+        solana_sdk::hash::Hash::from_str(&blockhash).ok()
+    }
+
     fn get_next_slot(&self) -> Option<u64> {
         let cur_slot = self.cur_slot.load(Ordering::Relaxed);
         if cur_slot == 0 {

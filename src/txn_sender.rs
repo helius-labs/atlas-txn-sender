@@ -134,7 +134,7 @@ impl TxnSenderImpl {
                         txn_sender_runtime.spawn(async move {
                         // retry unless its a timeout
                         for i in 0..SEND_TXN_RETRIES {
-                            let conn = connection_cache 
+                            let conn = connection_cache
                                 .get_nonblocking_connection(&leader.tpu_quic.unwrap());
                             if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
                                 if let Err(e) = result {
